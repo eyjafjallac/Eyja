@@ -36,24 +36,26 @@ export function NoteEditor({ note, onSave, onDelete }: NoteEditorProps): JSX.Ele
 
   return (
     <section className="flex h-full flex-col">
-      <header className="flex items-center gap-2 border-b border-border px-6 py-3">
+      <header className="flex items-center gap-4 px-6 py-4 glass-header shadow-sm transition-all relative z-10">
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Untitled"
-          className="min-w-0 flex-1 bg-transparent text-lg font-semibold outline-none placeholder:text-muted-foreground"
+          placeholder="Untitled Note"
+          className="min-w-0 flex-1 bg-transparent text-2xl font-bold tracking-tight outline-none placeholder:text-foreground/30 transition-all focus:placeholder:text-foreground/20"
         />
 
-        <Button size="sm" disabled={!dirty} onClick={() => onSave(note.id, { title, content })}>
-          <Save className="h-4 w-4" />
-          Save
-        </Button>
-        <Button size="sm" variant="ghost" onClick={() => onDelete(note.id)} title="Delete note">
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <div className="flex items-center gap-2 opacity-50 hover:opacity-100 transition-opacity focus-within:opacity-100">
+          <Button size="sm" variant="outline" className="h-8 rounded-full backdrop-blur-md bg-background/30 border-border/50 text-foreground shadow-sm px-3" disabled={!dirty} onClick={() => onSave(note.id, { title, content })}>
+            <Save className="h-3.5 w-3.5 mr-1.5" />
+            Save
+          </Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full hover:bg-destructive/10 text-foreground/60 hover:text-destructive transition-colors" onClick={() => onDelete(note.id)} title="Delete note">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </header>
 
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 relative z-10">
         {/* key={note.id} → a fresh editor instance per note. */}
         <BlockEditor
           key={note.id}
@@ -66,11 +68,13 @@ export function NoteEditor({ note, onSave, onDelete }: NoteEditorProps): JSX.Ele
         />
       </div>
 
-      <footer className="flex items-center justify-between border-t border-border px-6 py-2 text-xs text-muted-foreground">
-        <span>
-          {wordCount} {wordCount === 1 ? 'word' : 'words'}
-        </span>
-        <span>Last updated {new Date(note.updatedAt).toLocaleString()}</span>
+      <footer className="flex items-center justify-between glass-header px-6 py-2.5 text-xs text-foreground/60 border-t-white/10 mt-auto relative z-10">
+        <div className="flex items-center gap-4">
+          <span className="font-medium tracking-wide">
+            {wordCount} {wordCount === 1 ? 'WORD' : 'WORDS'}
+          </span>
+        </div>
+        <span className="opacity-80">Last updated {new Date(note.updatedAt).toLocaleString()}</span>
       </footer>
     </section>
   )

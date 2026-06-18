@@ -15,7 +15,7 @@ interface TopbarProps {
  */
 export function Topbar({ sidebarCollapsed, onToggleSidebar }: TopbarProps): JSX.Element {
   return (
-    <header className="flex h-11 shrink-0 items-center justify-between border-b border-border px-2">
+    <header className="flex h-14 shrink-0 items-center justify-between px-4 glass-header border-b-0 shadow-none relative z-10">
       <Button
         size="icon"
         variant="ghost"
@@ -29,7 +29,7 @@ export function Topbar({ sidebarCollapsed, onToggleSidebar }: TopbarProps): JSX.
         )}
       </Button>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-3">
         <MemoLauncher />
         <ThemeToggle />
       </div>

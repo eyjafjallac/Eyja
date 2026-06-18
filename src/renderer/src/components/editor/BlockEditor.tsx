@@ -46,7 +46,7 @@ export function BlockEditor({
   initialContent,
   editable,
   onChange,
-  placeholder = "Write, or press '/' for commands…"
+  placeholder = "begin typing data stream..."
 }: BlockEditorProps): JSX.Element {
   const [mathEdit, setMathEdit] = useState<MathEditState | null>(null)
   // A stable indirection so the (created-once) math onClick handlers can always

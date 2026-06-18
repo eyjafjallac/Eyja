@@ -28,5 +28,19 @@ export function usePersistentState<T>(key: string, initialValue: T): [T, (value:
     }
   }, [key, value])
 
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === key && e.newValue !== null) {
+        try {
+          setValue(JSON.parse(e.newValue))
+        } catch {
+          // ignore
+        }
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    return () => window.removeEventListener('storage', handleStorage)
+  }, [key])
+
   return [value, setValue]
 }

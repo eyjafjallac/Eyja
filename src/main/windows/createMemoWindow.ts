@@ -40,6 +40,8 @@ export function openMemoWindow(memo: Memo): BrowserWindow {
     minWidth: 200,
     minHeight: 160,
     frame: false, // chromeless: we draw our own tiny header in the renderer
+    transparent: true, // allows the React opacity setting to show the OS desktop behind
+    backgroundColor: '#00000000',
     skipTaskbar: true, // a memo is an accessory, not a top-level app window
     maximizable: false,
     fullscreenable: false,

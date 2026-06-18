@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useState, useEffect, type ReactNode } from 'react'
 import type { Note } from '@shared/models'
 import { usePersistentState } from '@/hooks/usePersistentState'
 import { Sidebar } from '@/components/Sidebar'
 import { SplitPane } from './SplitPane'
 import { Topbar } from './Topbar'
+import { SettingsPanel } from '@/components/SettingsPanel'
 
 interface AppLayoutProps {
   notes: Note[]
@@ -30,6 +31,21 @@ export function AppLayout({
 }: AppLayoutProps): JSX.Element {
   const [collapsed, setCollapsed] = usePersistentState<boolean>('eyja.sidebar.collapsed', false)
   const [search, setSearch] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [editorOpacity, setEditorOpacity] = usePersistentState('eyja.editorOpacity', 40)
+  const [sidebarOpacity, setSidebarOpacity] = usePersistentState('eyja.sidebarOpacity', 60)
+  const [memoOpacity] = usePersistentState('eyja.memoOpacity', 100)
+
+  // Apply transparency settings to CSS variables on the document root
+  useEffect(() => {
+    document.documentElement.style.setProperty('--editor-opacity', String(editorOpacity / 100))
+    document.documentElement.style.setProperty('--sidebar-opacity', String(sidebarOpacity / 100))
+  }, [editorOpacity, sidebarOpacity])
+  
+  useEffect(() => {
+    // Force write to localStorage to ensure other windows can see it instantly
+    window.localStorage.setItem('eyja.memoOpacity', JSON.stringify(memoOpacity))
+  }, [memoOpacity])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -38,7 +54,7 @@ export function AppLayout({
   }, [notes, search])
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background text-foreground">
+    <div className="h-screen w-screen overflow-hidden bg-transparent text-foreground relative">
       <SplitPane
         storageKey="eyja.sidebar.width"
         collapsed={collapsed}
@@ -50,10 +66,11 @@ export function AppLayout({
             onSearchChange={setSearch}
             onSelect={onSelect}
             onCreate={onCreate}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
         right={
-          <div className="flex h-full flex-col">
+          <div className="flex h-full flex-col glass-main">
             <Topbar
               sidebarCollapsed={collapsed}
               onToggleSidebar={() => setCollapsed(!collapsed)}
@@ -61,6 +78,14 @@ export function AppLayout({
             <div className="min-h-0 flex-1">{children}</div>
           </div>
         }
+      />
+      <SettingsPanel 
+        open={settingsOpen} 
+        onClose={() => setSettingsOpen(false)} 
+        editorOpacity={editorOpacity}
+        setEditorOpacity={setEditorOpacity}
+        sidebarOpacity={sidebarOpacity}
+        setSidebarOpacity={setSidebarOpacity}
       />
     </div>
   )

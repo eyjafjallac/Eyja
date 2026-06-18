@@ -8,12 +8,12 @@ interface StickyMemoProps {
 }
 
 /** Pastel sticky palettes — fixed colors (theme-independent) with dark text. */
-const PALETTE: Record<MemoColor, { bg: string; header: string; text: string }> = {
-  amber: { bg: '#fef3c7', header: '#fde68a', text: '#451a03' },
-  green: { bg: '#dcfce7', header: '#bbf7d0', text: '#052e16' },
-  blue: { bg: '#dbeafe', header: '#bfdbfe', text: '#172554' },
-  pink: { bg: '#fce7f3', header: '#fbcfe8', text: '#500724' },
-  purple: { bg: '#ede9fe', header: '#ddd6fe', text: '#2e1065' }
+const PALETTE: Record<MemoColor, { bg: [number, number, number]; header: [number, number, number]; text: string }> = {
+  amber: { bg: [254, 243, 199], header: [253, 230, 138], text: '#451a03' },
+  green: { bg: [220, 252, 231], header: [187, 247, 208], text: '#052e16' },
+  blue: { bg: [219, 234, 254], header: [191, 219, 254], text: '#172554' },
+  pink: { bg: [252, 231, 243], header: [251, 207, 232], text: '#500724' },
+  purple: { bg: [237, 233, 254], header: [221, 214, 254], text: '#2e1065' }
 }
 
 const COLOR_KEYS = Object.keys(PALETTE) as MemoColor[]
@@ -34,6 +34,45 @@ export function StickyMemo({ memoId }: StickyMemoProps): JSX.Element {
   const [content, setContent] = useState('')
   const [notFound, setNotFound] = useState(false)
   const [showPalette, setShowPalette] = useState(false)
+  const [memoOpacity, setMemoOpacity] = useState(100)
+
+  // Keep memo opacity synced with settings. Clamp to avoid invisible windows.
+  useEffect(() => {
+    const clampOpacity = (value: number): number => Math.min(100, Math.max(20, value))
+
+    try {
+      const stored = window.localStorage.getItem('eyja.memoOpacity')
+      if (stored) {
+         const val = clampOpacity(JSON.parse(stored))
+         if (val !== memoOpacity) setMemoOpacity(val)
+      }
+    } catch {
+      // ignore
+    }
+
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'eyja.memoOpacity' && e.newValue) {
+        setMemoOpacity(clampOpacity(JSON.parse(e.newValue)))
+      }
+    }
+    window.addEventListener('storage', handleStorage)
+    
+    // Fallback: poll local storage since electron windows might not perfectly sync storage events
+    const interval = setInterval(() => {
+      try {
+        const stored = window.localStorage.getItem('eyja.memoOpacity')
+        if (stored) {
+          const val = clampOpacity(JSON.parse(stored))
+          if (val !== memoOpacity) setMemoOpacity(val)
+        }
+      } catch {}
+    }, 1000)
+
+    return () => {
+      window.removeEventListener('storage', handleStorage)
+      clearInterval(interval)
+    }
+  }, [memoOpacity])
   // Tracks the last value persisted, so we don't re-save on initial load.
   const lastSaved = useRef('')
 
@@ -94,21 +133,24 @@ export function StickyMemo({ memoId }: StickyMemoProps): JSX.Element {
   }
 
   const palette = PALETTE[memo?.color ?? 'amber']
+  const alpha = memoOpacity / 100
 
   return (
     <div
       className="flex h-screen w-screen flex-col overflow-hidden"
-      style={{ backgroundColor: palette.bg, color: palette.text }}
+      style={{ backgroundColor: `rgba(${palette.bg[0]}, ${palette.bg[1]}, ${palette.bg[2]}, ${alpha})`, color: palette.text }}
     >
+      <div className="absolute inset-0 -z-10 pointer-events-none" style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }} />
+      
       <header
         className="flex h-8 shrink-0 items-center justify-between px-1.5"
-        style={{ ...DRAG, backgroundColor: palette.header }}
+        style={{ ...DRAG, backgroundColor: `rgba(${palette.header[0]}, ${palette.header[1]}, ${palette.header[2]}, ${alpha})` }}
       >
         <button
           title="Change color"
           onClick={() => setShowPalette((v) => !v)}
           className="h-3.5 w-3.5 rounded-full border border-black/20"
-          style={{ ...NO_DRAG, backgroundColor: palette.bg }}
+          style={{ ...NO_DRAG, backgroundColor: `rgb(${palette.bg[0]}, ${palette.bg[1]}, ${palette.bg[2]})` }}
         />
 
         <div className="flex items-center gap-0.5" style={NO_DRAG}>
@@ -139,7 +181,7 @@ export function StickyMemo({ memoId }: StickyMemoProps): JSX.Element {
       {showPalette && (
         <div
           className="flex items-center gap-1.5 px-2 py-1"
-          style={{ ...NO_DRAG, backgroundColor: palette.header }}
+          style={{ ...NO_DRAG, backgroundColor: `rgba(${palette.header[0]}, ${palette.header[1]}, ${palette.header[2]}, ${alpha})` }}
         >
           {COLOR_KEYS.map((key) => (
             <button
@@ -147,7 +189,7 @@ export function StickyMemo({ memoId }: StickyMemoProps): JSX.Element {
               title={key}
               onClick={() => changeColor(key)}
               className="h-4 w-4 rounded-full border border-black/20 transition-transform hover:scale-110"
-              style={{ backgroundColor: PALETTE[key].bg }}
+              style={{ backgroundColor: `rgb(${PALETTE[key].bg[0]}, ${PALETTE[key].bg[1]}, ${PALETTE[key].bg[2]})` }}
             />
           ))}
         </div>
