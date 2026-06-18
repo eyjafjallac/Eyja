@@ -1,0 +1,198 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * shadcn/ui design tokens as CSS variables. Components reference these via the
+ * Tailwind theme (see tailwind.config.js), so switching the `.dark` class on
+ * <html> re-themes the entire app with zero component changes.
+ */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 340 20% 20%;
+    --card: 0 0% 100%;
+    --card-foreground: 340 20% 20%;
+    --primary: 340 80% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 340 20% 90%;
+    --secondary-foreground: 340 20% 20%;
+    --muted: 340 10% 90%;
+    --muted-foreground: 340 10% 40%;
+    --accent: 340 30% 90%;
+    --accent-foreground: 340 20% 20%;
+    --border: 340 20% 85%;
+    --input: 340 20% 85%;
+    --ring: 340 80% 60%;
+    --radius: 0.75rem;
+
+    /* Atmosphere Gradients - Light Mode (Morning) */
+    --app-bg-image: url('../assets/bg-light.png');
+    --glass-bg-rgb: 255, 255, 255;
+    --glass-bg: rgba(var(--glass-bg-rgb), var(--sidebar-opacity, 0.4));
+    --glass-menu-bg: rgba(var(--glass-bg-rgb), calc(var(--sidebar-opacity, 0.4) + 0.3));
+    --glass-border: rgba(255, 255, 255, 0.5);
+    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.05);
+  }
+
+  .dark {
+    --background: 230 40% 10%;
+    --foreground: 210 40% 98%;
+    --card: 230 40% 15%;
+    --card-foreground: 210 40% 98%;
+    --primary: 280 80% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 230 40% 25%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 230 30% 25%;
+    --muted-foreground: 230 20% 65%;
+    --accent: 230 40% 25%;
+    --accent-foreground: 210 40% 98%;
+    --border: 230 30% 30%;
+    --input: 230 30% 30%;
+    --ring: 280 80% 65%;
+
+    /* Atmosphere Gradients - Dark Mode (Night) */
+    --app-bg-image: url('../assets/bg-dark.png');
+    --glass-bg-rgb: 15, 15, 30;
+    --glass-bg: rgba(var(--glass-bg-rgb), var(--sidebar-opacity, 0.6));
+    --glass-menu-bg: rgba(var(--glass-bg-rgb), calc(var(--sidebar-opacity, 0.6) + 0.35));
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground;
+    background-image: var(--app-bg-image);
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    min-height: 100vh;
+    margin: 0;
+    font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid var(--glass-border);
+  }
+  
+  .glass-main {
+    background: rgba(255, 255, 255, var(--editor-opacity, 0.4));
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+  }
+  .dark .glass-main {
+    background: rgba(0, 0, 0, var(--editor-opacity, 0.4));
+  }
+
+  .glass-menu {
+    background: var(--glass-menu-bg);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+
+  .glass-header {
+    background: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 8px 0;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(var(--glass-bg-rgb), 0.3);
+    border-radius: 10px;
+    border: 1px solid rgba(var(--glass-bg-rgb), 0.1);
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(var(--glass-bg-rgb), 0.5);
+  }
+}
+
+/*
+ * Typographic styles for the TipTap block editor. Scoped to `.eyja-prose`
+ * (the class we attach to the ProseMirror root) so editor formatting never
+ * leaks into the rest of the UI. Colors reference the same theme tokens, so
+ * the editor follows light/dark automatically.
+ */
+@layer components {
+  .eyja-prose {
+    @apply min-h-full text-sm leading-relaxed text-foreground;
+  }
+  .eyja-prose > * + * {
+    @apply mt-3;
+  }
+  .eyja-prose h1 {
+    @apply mt-6 text-2xl font-bold tracking-tight;
+  }
+  .eyja-prose h2 {
+    @apply mt-5 text-xl font-semibold tracking-tight;
+  }
+  .eyja-prose h3 {
+    @apply mt-4 text-lg font-semibold;
+  }
+  .eyja-prose ul {
+    @apply list-disc pl-6;
+  }
+  .eyja-prose ol {
+    @apply list-decimal pl-6;
+  }
+  .eyja-prose li > p {
+    @apply my-0;
+  }
+  .eyja-prose blockquote {
+    @apply border-l-2 border-border pl-4 italic text-muted-foreground;
+  }
+  .eyja-prose code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
+  }
+  .eyja-prose pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs;
+  }
+  .eyja-prose pre code {
+    @apply bg-transparent p-0;
+  }
+  .eyja-prose a {
+    @apply text-primary underline underline-offset-2;
+  }
+  .eyja-prose hr {
+    @apply my-4 border-border;
+  }
+  .eyja-prose img {
+    @apply my-2 max-w-full rounded-md border border-border;
+  }
+  /* Selected image (e.g. clicked) gets a ring so it's clearly focused. */
+  .eyja-prose img.ProseMirror-selectednode {
+    @apply ring-2 ring-ring;
+  }
+
+  /* KaTeX math: center block equations and make them clickable-looking. */
+  .eyja-prose .tiptap-mathematics-render--editable {
+    @apply cursor-default rounded px-0.5;
+  }
+  .eyja-prose div.tiptap-mathematics-render {
+    @apply my-3 overflow-x-auto text-center;
+  }
+  .eyja-prose .block-math-error,
+  .eyja-prose .inline-math-error {
+    @apply text-destructive;
+  }
+
+  /* Placeholder text shown only in the empty editor. */
+  .eyja-prose p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-muted-foreground;
+  }
+}

@@ -1,0 +1,66 @@
+// Prisma schema for Eyja.
+//
+// WHY this generator/datasource combo:
+//  - `prisma-client` (Prisma 7's default generator) emits plain TypeScript into
+//    our own source tree, so electron-vite bundles it like any other module —
+//    no hidden node_modules magic and no separate engine binary to unpack.
+//  - `moduleFormat = "cjs"` matches electron-vite's main-process output.
+//  - `runtime = "nodejs"` because the client only ever runs in the main process.
+//  - We pair this with the better-sqlite3 driver adapter at runtime
+//    (see src/main/db/client.ts), so Prisma drives the same native module we
+//    already rebuild for Electron instead of shipping its own engine.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  runtime      = "nodejs"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  // Prisma 7 no longer accepts `url` here. The CLI reads the connection URL
+  // from prisma.config.ts; the app reads it at runtime from src/main/db/client.ts.
+  provider = "sqlite"
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String   @default("Untitled")
+  // Serialized TipTap JSON document. Stored as text; SQLite has no JSON type.
+  content   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tags Tag[] @relation("NoteTags")
+
+  @@index([updatedAt])
+}
+
+model Tag {
+  id    String  @id @default(cuid())
+  name  String  @unique
+  color String?
+
+  notes Note[] @relation("NoteTags")
+}
+
+// A floating sticky memo shown in its own always-on-top window while studying.
+// Window position/size is persisted so a memo re-opens exactly where it was.
+model Memo {
+  id      String  @id @default(cuid())
+  content String  @default("")
+  // Palette key (amber/green/blue/pink/purple) mapped to colors in the UI.
+  color   String  @default("amber")
+  // Whether the window floats above all others (always-on-top).
+  pinned  Boolean @default(true)
+  // Last known window bounds; null until the window has been placed once.
+  x       Int?
+  y       Int?
+  width   Int?
+  height  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
