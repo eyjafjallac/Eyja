@@ -42,3 +42,56 @@ export interface UpdateNoteInput {
   title?: string
   content?: string
 }
+
+/**
+ * Payload to persist an image. The renderer reads a dropped/pasted file into
+ * raw bytes (Uint8Array is structured-clone friendly over IPC) and the main
+ * process writes it to disk, returning an `eyja-asset://` URL to embed.
+ */
+export interface SaveImageInput {
+  bytes: Uint8Array
+  /** File extension without the dot, e.g. "png" (sanitized in main). */
+  ext: string
+}
+
+/** Sticky-memo palette keys; mapped to concrete colors in the renderer. */
+export type MemoColor = 'amber' | 'green' | 'blue' | 'pink' | 'purple'
+
+/** Window position + size for a sticky memo, in screen pixels. */
+export interface MemoBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/**
+ * A floating sticky memo. Lives in its own always-on-top window so quick notes
+ * stay visible over other apps while studying.
+ */
+export interface Memo {
+  id: string
+  content: string
+  color: MemoColor
+  /** Whether the window floats above all others. */
+  pinned: boolean
+  /** Last known window bounds, or null before it has been placed. */
+  bounds: MemoBounds | null
+  createdAt: string
+  updatedAt: string
+}
+
+/** Payload to create a memo. The main process generates id/timestamps. */
+export interface CreateMemoInput {
+  content?: string
+  color?: MemoColor
+}
+
+/** Payload to update a memo. Only provided fields change. */
+export interface UpdateMemoInput {
+  id: string
+  content?: string
+  color?: MemoColor
+  pinned?: boolean
+  bounds?: MemoBounds
+}

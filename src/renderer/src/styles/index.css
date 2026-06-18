@@ -59,3 +59,79 @@
     font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   }
 }
+
+/*
+ * Typographic styles for the TipTap block editor. Scoped to `.eyja-prose`
+ * (the class we attach to the ProseMirror root) so editor formatting never
+ * leaks into the rest of the UI. Colors reference the same theme tokens, so
+ * the editor follows light/dark automatically.
+ */
+@layer components {
+  .eyja-prose {
+    @apply min-h-full text-sm leading-relaxed text-foreground;
+  }
+  .eyja-prose > * + * {
+    @apply mt-3;
+  }
+  .eyja-prose h1 {
+    @apply mt-6 text-2xl font-bold tracking-tight;
+  }
+  .eyja-prose h2 {
+    @apply mt-5 text-xl font-semibold tracking-tight;
+  }
+  .eyja-prose h3 {
+    @apply mt-4 text-lg font-semibold;
+  }
+  .eyja-prose ul {
+    @apply list-disc pl-6;
+  }
+  .eyja-prose ol {
+    @apply list-decimal pl-6;
+  }
+  .eyja-prose li > p {
+    @apply my-0;
+  }
+  .eyja-prose blockquote {
+    @apply border-l-2 border-border pl-4 italic text-muted-foreground;
+  }
+  .eyja-prose code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.85em];
+  }
+  .eyja-prose pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs;
+  }
+  .eyja-prose pre code {
+    @apply bg-transparent p-0;
+  }
+  .eyja-prose a {
+    @apply text-primary underline underline-offset-2;
+  }
+  .eyja-prose hr {
+    @apply my-4 border-border;
+  }
+  .eyja-prose img {
+    @apply my-2 max-w-full rounded-md border border-border;
+  }
+  /* Selected image (e.g. clicked) gets a ring so it's clearly focused. */
+  .eyja-prose img.ProseMirror-selectednode {
+    @apply ring-2 ring-ring;
+  }
+
+  /* KaTeX math: center block equations and make them clickable-looking. */
+  .eyja-prose .tiptap-mathematics-render--editable {
+    @apply cursor-default rounded px-0.5;
+  }
+  .eyja-prose div.tiptap-mathematics-render {
+    @apply my-3 overflow-x-auto text-center;
+  }
+  .eyja-prose .block-math-error,
+  .eyja-prose .inline-math-error {
+    @apply text-destructive;
+  }
+
+  /* Placeholder text shown only in the empty editor. */
+  .eyja-prose p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    @apply pointer-events-none float-left h-0 text-muted-foreground;
+  }
+}

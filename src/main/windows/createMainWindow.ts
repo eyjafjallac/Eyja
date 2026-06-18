@@ -1,5 +1,6 @@
 import { join } from 'node:path'
-import { BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, nativeImage, shell } from 'electron'
+import { loadRenderer, rendererWebPreferences } from './shared'
 
 /**
  * Factory for the primary application window.
@@ -10,6 +11,8 @@ import { BrowserWindow, shell } from 'electron'
  * instead of copy-pasting (and eventually mis-configuring) it.
  */
 export function createMainWindow(): BrowserWindow {
+  const appIcon = nativeImage.createFromPath(join(app.getAppPath(), 'assets', 'icons', 'icon.png'))
+
   const window = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -17,13 +20,9 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 480,
     show: false, // avoid a white flash; we reveal on 'ready-to-show'
     autoHideMenuBar: true,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      // --- The security posture you asked for ---
-      contextIsolation: true, // renderer & preload run in separate JS worlds
-      nodeIntegration: false, // no require()/process/Buffer in the renderer
-      sandbox: false // preload bundles as CJS and only uses the IPC bridge
-    }
+    // Use the project icon in dev and packaged builds.
+    icon: appIcon.isEmpty() ? undefined : appIcon,
+    webPreferences: rendererWebPreferences()
   })
 
   window.on('ready-to-show', () => window.show())
@@ -34,14 +33,7 @@ export function createMainWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  // In dev, electron-vite serves the renderer over HTTP (with HMR).
-  // In production we load the built HTML file from disk.
-  const devServerUrl = process.env['ELECTRON_RENDERER_URL']
-  if (devServerUrl) {
-    void window.loadURL(devServerUrl)
-  } else {
-    void window.loadFile(join(__dirname, '../renderer/index.html'))
-  }
+  loadRenderer(window)
 
   return window
 }

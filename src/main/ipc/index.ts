@@ -1,4 +1,6 @@
 import { registerNoteIpc } from './note.ipc'
+import { registerImageIpc } from './image.ipc'
+import { registerMemoIpc } from './memo.ipc'
 
 /**
  * Single entry point that registers every IPC domain. The main process calls
@@ -7,4 +9,6 @@ import { registerNoteIpc } from './note.ipc'
  */
 export function registerIpcHandlers(): void {
   registerNoteIpc()
+  registerImageIpc()
+  registerMemoIpc()
 }

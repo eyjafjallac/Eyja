@@ -1,22 +1,25 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useNotes } from '@/hooks/useNotes'
-import { Sidebar } from '@/components/Sidebar'
+import { usePersistentState } from '@/hooks/usePersistentState'
+import { AppLayout } from '@/components/layout/AppLayout'
 import { NoteEditor } from '@/components/NoteEditor'
 
 /**
- * App shell: the split-pane layout (Sidebar | editor) you asked for in Step 2,
- * here wired to the database purely through `window.api` to prove the bridge
- * works end-to-end. No Node, no SQL, no Prisma types anywhere in this tree.
+ * App = data + selection. All *layout* concerns live in <AppLayout>; this
+ * component just owns which note is active and renders the right main-pane
+ * content for it. Nothing here knows about Node, SQL, or Prisma — only
+ * `window.api` via the useNotes hook.
  */
 export default function App(): JSX.Element {
   const { notes, loading, createNote, saveNote, deleteNote } = useNotes()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Remember the last-open note across restarts (UI state, not DB).
+  const [selectedId, setSelectedId] = usePersistentState<string | null>('eyja.selectedNote', null)
 
-  // Keep a valid selection: pick the first note, or clear if none remain.
+  // Keep the selection valid: fall back to the first note, or clear if none.
   useEffect(() => {
     if (selectedId && notes.some((n) => n.id === selectedId)) return
     setSelectedId(notes[0]?.id ?? null)
-  }, [notes, selectedId])
+  }, [notes, selectedId, setSelectedId])
 
   const selected = notes.find((n) => n.id === selectedId) ?? null
 
@@ -26,27 +29,23 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      <Sidebar
-        notes={notes}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onCreate={handleCreate}
-      />
-
-      <main className="flex flex-1 flex-col">
-        {loading ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Loading…
-          </div>
-        ) : selected ? (
-          <NoteEditor note={selected} onSave={saveNote} onDelete={deleteNote} />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-1 text-muted-foreground">
-            <p className="text-sm">Select a note, or create your first one.</p>
-          </div>
-        )}
-      </main>
-    </div>
+    <AppLayout
+      notes={notes}
+      selectedId={selectedId}
+      onSelect={setSelectedId}
+      onCreate={handleCreate}
+    >
+      {loading ? (
+        <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          Loading…
+        </div>
+      ) : selected ? (
+        <NoteEditor note={selected} onSave={saveNote} onDelete={deleteNote} />
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-1 text-muted-foreground">
+          <p className="text-sm">Select a note, or create your first one.</p>
+        </div>
+      )}
+    </AppLayout>
   )
 }

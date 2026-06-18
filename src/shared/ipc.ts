@@ -1,4 +1,12 @@
-import type { CreateNoteInput, Note, UpdateNoteInput } from './models'
+import type {
+  CreateMemoInput,
+  CreateNoteInput,
+  Memo,
+  Note,
+  SaveImageInput,
+  UpdateMemoInput,
+  UpdateNoteInput
+} from './models'
 
 /**
  * The IPC contract. This is the single source of truth shared by main + preload
@@ -14,6 +22,21 @@ export const IPC = {
     create: 'notes:create',
     update: 'notes:update',
     delete: 'notes:delete'
+  },
+  images: {
+    save: 'images:save'
+  },
+  memos: {
+    list: 'memos:list',
+    get: 'memos:get',
+    create: 'memos:create',
+    update: 'memos:update',
+    delete: 'memos:delete'
+  },
+  // Window-management channels (open/close the floating sticky window).
+  memoWindow: {
+    open: 'memoWindow:open',
+    close: 'memoWindow:close'
   }
 } as const
 
@@ -31,5 +54,22 @@ export interface EyjaApi {
     create: (input: CreateNoteInput) => Promise<Note>
     update: (input: UpdateNoteInput) => Promise<Note>
     delete: (id: string) => Promise<void>
+  }
+  images: {
+    /** Persists image bytes and returns an `eyja-asset://` URL to embed. */
+    save: (input: SaveImageInput) => Promise<string>
+  }
+  memos: {
+    list: () => Promise<Memo[]>
+    get: (id: string) => Promise<Memo | null>
+    create: (input: CreateMemoInput) => Promise<Memo>
+    update: (input: UpdateMemoInput) => Promise<Memo>
+    delete: (id: string) => Promise<void>
+  }
+  memoWindow: {
+    /** Open (or focus) the floating window for a memo. */
+    open: (id: string) => Promise<void>
+    /** Close the floating window for a memo (the memo itself is kept). */
+    close: (id: string) => Promise<void>
   }
 }

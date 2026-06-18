@@ -1,15 +1,21 @@
 import { app, BrowserWindow } from 'electron'
 import { registerIpcHandlers } from './ipc'
 import { disconnectPrisma } from './db/client'
+import { registerAssetProtocol, registerAssetScheme } from './assets/assetProtocol'
 import { createMainWindow } from './windows/createMainWindow'
 
 /**
  * Main-process entry point: owns the app lifecycle and nothing else.
- * The real work is delegated to focused modules (ipc/, db/, windows/).
+ * The real work is delegated to focused modules (ipc/, db/, windows/, assets/).
  */
 
+// Privileged schemes MUST be declared before the app is ready.
+registerAssetScheme()
+
 app.whenReady().then(() => {
-  // Register the backend API once, before any window can call it.
+  // Serve user images via eyja-asset:// and register the backend API, both
+  // before any window can request an asset or call an IPC channel.
+  registerAssetProtocol()
   registerIpcHandlers()
 
   createMainWindow()

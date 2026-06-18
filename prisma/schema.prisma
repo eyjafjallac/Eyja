@@ -43,3 +43,24 @@ model Tag {
 
   notes Note[] @relation("NoteTags")
 }
+
+// A floating sticky memo shown in its own always-on-top window while studying.
+// Window position/size is persisted so a memo re-opens exactly where it was.
+model Memo {
+  id      String  @id @default(cuid())
+  content String  @default("")
+  // Palette key (amber/green/blue/pink/purple) mapped to colors in the UI.
+  color   String  @default("amber")
+  // Whether the window floats above all others (always-on-top).
+  pinned  Boolean @default(true)
+  // Last known window bounds; null until the window has been placed once.
+  x       Int?
+  y       Int?
+  width   Int?
+  height  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}

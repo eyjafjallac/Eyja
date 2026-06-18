@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC, type EyjaApi } from '@shared/ipc'
-import type { CreateNoteInput, UpdateNoteInput } from '@shared/models'
+import type {
+  CreateMemoInput,
+  CreateNoteInput,
+  SaveImageInput,
+  UpdateMemoInput,
+  UpdateNoteInput
+} from '@shared/models'
 
 /**
  * The bridge. This file is deliberately the SMALLEST, dumbest layer in the app:
@@ -20,6 +26,20 @@ const api: EyjaApi = {
     create: (input: CreateNoteInput) => ipcRenderer.invoke(IPC.notes.create, input),
     update: (input: UpdateNoteInput) => ipcRenderer.invoke(IPC.notes.update, input),
     delete: (id: string) => ipcRenderer.invoke(IPC.notes.delete, id)
+  },
+  images: {
+    save: (input: SaveImageInput) => ipcRenderer.invoke(IPC.images.save, input)
+  },
+  memos: {
+    list: () => ipcRenderer.invoke(IPC.memos.list),
+    get: (id: string) => ipcRenderer.invoke(IPC.memos.get, id),
+    create: (input: CreateMemoInput) => ipcRenderer.invoke(IPC.memos.create, input),
+    update: (input: UpdateMemoInput) => ipcRenderer.invoke(IPC.memos.update, input),
+    delete: (id: string) => ipcRenderer.invoke(IPC.memos.delete, id)
+  },
+  memoWindow: {
+    open: (id: string) => ipcRenderer.invoke(IPC.memoWindow.open, id),
+    close: (id: string) => ipcRenderer.invoke(IPC.memoWindow.close, id)
   }
 }
 
