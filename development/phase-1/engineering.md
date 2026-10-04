@@ -2,16 +2,17 @@
 
 殼、資料庫、測試。產品行為寫在其他檔，這裡只記怎麼把它跑起來。
 
-相關：[document.md](document.md)、[../../development.md](../development.md)
+相關：[document.md](document.md)、[../development.md](../development.md)
 
 ## 共識
 
-- Tauri 2。
+- Tauri 2。前端用 React。
 - 領域和存檔在 Rust。前端透過 command 讀寫，不自己開資料庫。
 - SQLite，一個檔放在 app data。開啟 WAL。開發版和正式版的資料目錄分開。
 - 附件在旁邊的 `assets/`。備份時資料庫檔和這個目錄一起複製。
 - 不用 PostgreSQL。多人同步以後再想，本機仍然是這份 SQLite。
-- 要有 CI，用來跑測試。
+- 要有 CI，用 GitHub Actions 跑測試。
+- 介面文字用英文。前期不做語言切換。筆記內容不受此限制，中文英文都可以寫。
 
 ## 先照這個做
 
@@ -24,25 +25,13 @@
 
 標籤和連結會再加 command，但不另做一套存取路徑。
 
-CI 先跑 Rust 測試，以及前端能一起建置。不在前期擴成完整的發布流水線。
+GitHub Actions 先跑 Rust 測試，以及前端能一起建置。不在前期擴成完整的發布流水線。
 
 `.gitignore` 要含前端依賴和建置產物。現在的檔案只有 Rust 的忽略規則。
 
 ## 待決定
 
-確定的勾起來，並在 `A:` 寫結論。不確定的不要勾，把想法留在 `A:`。
-
-- [ ] 前端用 React 還是 Svelte？
-
-  A:
-
-- [ ] 介面語言：中文、英文，或先不做 i18n？
-
-  A:
-
-- [ ] CI 放在 GitHub Actions，還是你之後用的別的地方？
-
-  A:
+目前沒有。下一輪有問題再加，每項下面留 `A:`。
 
 ## 完成時
 
@@ -53,6 +42,7 @@ CI 先跑 Rust 測試，以及前端能一起建置。不在前期擴成完整�
 - [ ] SQLite、第一版 schema、migration 能在乾淨目錄建起來
 - [ ] CI 會跑測試
 
-## 我的筆記
 
+
+## 我的筆記
 
