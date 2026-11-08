@@ -5,8 +5,11 @@ use uuid::Uuid;
 
 use crate::db::{now_ms, AppDb};
 use crate::documents::{self, Note};
+use crate::links;
+use crate::settings;
 
 const CHECKPOINT_EVERY: i64 = 20;
+const DAY_MS: i64 = 24 * 60 * 60 * 1000;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -56,14 +59,102 @@ pub fn history_state(db: State<AppDb>, id: String) -> Result<HistoryState, Strin
     load_history(&conn, &id)
 }
 
+/// `tz_offset_minutes` is the caller's `Date.getTimezoneOffset()`; with the "last version
+/// per day" setting on, older days of this document are thinned out afterwards.
 #[tauri::command]
-pub fn record_version(db: State<AppDb>, id: String) -> Result<HistoryState, String> {
+pub fn record_version(db: State<AppDb>, id: String, tz_offset_minutes: Option<i32>) -> Result<HistoryState, String> {
     let conn = lock(&db)?;
     let tx = conn.unchecked_transaction().map_err(|err| err.to_string())?;
     record_if_changed(&tx, &id)?;
+    if let Some(offset) = tz_offset_minutes {
+        if settings::keeps_daily_versions(&tx)? {
+            compact_daily(&tx, &id, offset, now_ms())?;
+        }
+    }
     let state = load_history(&tx, &id)?;
     tx.commit().map_err(|err| err.to_string())?;
     Ok(state)
+}
+
+pub(crate) fn compact_all(conn: &Connection, tz_offset_minutes: i32, now: i64) -> Result<usize, String> {
+    let ids: Vec<String> = {
+        let mut statement = conn
+            .prepare("SELECT DISTINCT document_id FROM document_versions")
+            .map_err(|err| err.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get(0))
+            .map_err(|err| err.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())?
+    };
+    let mut removed = 0;
+    for id in ids {
+        removed += compact_daily(conn, &id, tz_offset_minutes, now)?;
+    }
+    Ok(removed)
+}
+
+/// Keeps every version from today and the last version of each earlier local day. The kept
+/// versions are written again as a fresh chain, because a patch only applies on top of the
+/// version right before it. Returns how many versions were dropped.
+pub(crate) fn compact_daily(conn: &Connection, id: &str, tz_offset_minutes: i32, now: i64) -> Result<usize, String> {
+    let offset_ms = i64::from(tz_offset_minutes) * 60_000;
+    let day = |time: i64| (time - offset_ms).div_euclid(DAY_MS);
+    let today = day(now);
+    let rows: Vec<(String, i64)> = {
+        let mut statement = conn
+            .prepare(
+                "SELECT id, created_at FROM document_versions
+                 WHERE document_id = ?1
+                 ORDER BY rowid",
+            )
+            .map_err(|err| err.to_string())?;
+        let rows = statement
+            .query_map([id], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|err| err.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())?
+    };
+    let keep: Vec<bool> = (0..rows.len())
+        .map(|index| {
+            let current = day(rows[index].1);
+            current >= today || rows.get(index + 1).is_none_or(|next| day(next.1) != current)
+        })
+        .collect();
+    let removed = keep.iter().filter(|kept| !**kept).count();
+    if removed == 0 {
+        return Ok(0);
+    }
+
+    let mut kept = Vec::new();
+    for ((version_id, created_at), keep) in rows.iter().zip(&keep) {
+        if *keep {
+            kept.push((version_id.clone(), *created_at, version_text(conn, version_id)?));
+        }
+    }
+    conn.execute("DELETE FROM document_versions WHERE document_id = ?1", [id])
+        .map_err(|err| err.to_string())?;
+    let mut previous: Option<(&str, &str)> = None;
+    let mut patches = 0;
+    for (version_id, created_at, text) in &kept {
+        let (patch, body) = match previous {
+            Some((_, before)) if patches < CHECKPOINT_EVERY => {
+                patches += 1;
+                (Some(encode_patch(before, text)?), None)
+            }
+            _ => {
+                patches = 0;
+                (None, Some(text.clone()))
+            }
+        };
+        conn.execute(
+            "INSERT INTO document_versions (
+                id, document_id, parent_id, created_at, patch, body
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![version_id, id, previous.map(|(parent, _)| parent), created_at, patch, body],
+        )
+        .map_err(|err| err.to_string())?;
+        previous = Some((version_id, text));
+    }
+    Ok(removed)
 }
 
 #[tauri::command]
@@ -103,7 +194,7 @@ fn load_history(conn: &Connection, id: &str) -> Result<HistoryState, String> {
     })
 }
 
-fn record_if_changed(conn: &Connection, id: &str) -> Result<bool, String> {
+pub(crate) fn record_if_changed(conn: &Connection, id: &str) -> Result<bool, String> {
     let note = require_note(conn, id)?;
     let previous = latest_stored(conn, id)?;
     let previous_text = match &previous {
@@ -291,7 +382,7 @@ fn write_body(conn: &Connection, id: &str, body: &str) -> Result<(), String> {
     if changed == 0 {
         return Err("Note not found".to_string());
     }
-    Ok(())
+    links::sync_document(conn, id)
 }
 
 fn split_lines(text: &str) -> Vec<String> {
@@ -538,6 +629,52 @@ mod tests {
             let text = version_text(&conn, &version.id).unwrap();
             assert_eq!(&text, body);
         }
+    }
+
+    #[test]
+    fn daily_compaction_keeps_the_last_version_of_each_past_day() {
+        let conn = test_db();
+        let note = create(&conn).unwrap();
+        let hour = 60 * 60 * 1000;
+        // UTC+8: local midnight is 16:00 UTC the day before.
+        let offset = -8 * 60;
+        let local_day = |day: i64| day * DAY_MS - 8 * hour;
+        let now = local_day(10) + 12 * hour;
+        let times = [
+            local_day(7) + hour,
+            local_day(7) + 3 * hour,
+            local_day(8) + 23 * hour,
+            local_day(9) + hour,
+            local_day(9) + 2 * hour,
+            local_day(9) + 5 * hour,
+            local_day(10) + hour,
+            local_day(10) + 2 * hour,
+        ];
+        for (index, time) in times.iter().enumerate() {
+            update(&conn, &note.id, "T", &format!("line {index}\nshared\n")).unwrap();
+            record_if_changed(&conn, &note.id).unwrap();
+            conn.execute(
+                "UPDATE document_versions SET created_at = ?1
+                 WHERE rowid = (SELECT MAX(rowid) FROM document_versions)",
+                [time],
+            )
+            .unwrap();
+        }
+
+        assert_eq!(compact_daily(&conn, &note.id, offset, now).unwrap(), 3);
+        let versions = list_versions(&conn, &note.id).unwrap();
+        let texts: Vec<String> = versions
+            .iter()
+            .rev()
+            .map(|version| version_text(&conn, &version.id).unwrap())
+            .collect();
+        let expected: Vec<String> = [1, 2, 5, 6, 7]
+            .iter()
+            .map(|index| format!("line {index}\nshared\n"))
+            .collect();
+        assert_eq!(texts, expected);
+        assert!(versions.last().unwrap().checkpoint);
+        assert_eq!(compact_daily(&conn, &note.id, offset, now).unwrap(), 0);
     }
 
     #[test]

@@ -3,11 +3,25 @@ import {
   Decoration,
   type DecorationSet,
   EditorView,
+  showTooltip,
+  type Tooltip,
+  ViewPlugin,
   WidgetType,
 } from "@codemirror/view";
 import { type EditorState, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
 import hljs from "highlight.js/lib/common";
 import katex from "katex";
+import {
+  blockAt,
+  DISPLAY_MATH,
+  type EditableBlock,
+  lineAligned,
+  mathAround,
+  openBlockEditor,
+  parseFence,
+  tableRows,
+} from "./blocks";
+import { colorOf, colorSpanPattern } from "./textColors";
 import "./livePreview.css";
 
 type Span = { from: number; to: number; deco: Decoration; replace: boolean };
@@ -17,6 +31,8 @@ export type LivePreviewHandlers = {
   onOpenTitle: (title: string) => void;
   /** Turns an `asset:<id>` image source into a URL the webview can load. */
   resolveImage?: (src: string) => string | null;
+  /** Edit a maths block, code block or table in a pop-up. Without it, blocks open in place. */
+  onEditBlock?: (block: EditableBlock) => void;
 };
 
 /** Rebuilds the preview when something outside the document changes, such as the image list. */
@@ -26,6 +42,17 @@ export const refreshPreview = StateEffect.define<null>();
 export const showRendered = StateEffect.define<null>();
 
 const hide = Decoration.replace({});
+
+/**
+ * The editor measures a block widget by its border box and ignores CSS margins, so a margin
+ * shifts every click below the block. The space around a block comes from this padded frame.
+ */
+function blockFrame(element: HTMLElement) {
+  const frame = document.createElement("div");
+  frame.className = "cm-block-frame";
+  frame.append(element);
+  return frame;
+}
 
 class HtmlWidget extends WidgetType {
   constructor(
@@ -45,7 +72,7 @@ class HtmlWidget extends WidgetType {
     const element = document.createElement(this.block ? "div" : "span");
     element.className = this.className;
     element.innerHTML = this.html;
-    return element;
+    return this.block ? blockFrame(element) : element;
   }
 
   ignoreEvent() {
@@ -99,7 +126,7 @@ class CodeWidget extends WidgetType {
 
   toDOM(view: EditorView) {
     const box = document.createElement(this.block ? "div" : "span");
-    box.className = "cm-code-box";
+    box.className = this.block ? "cm-code-box cm-block-edit" : "cm-code-box";
     if (this.language) {
       box.classList.add("has-lang");
       const language = document.createElement("span");
@@ -131,7 +158,7 @@ class CodeWidget extends WidgetType {
     pre.append(code);
 
     box.append(button, pre);
-    return box;
+    return this.block ? blockFrame(box) : box;
   }
 
   destroy(dom: HTMLElement) {
@@ -222,30 +249,21 @@ function copyPlainText(code: string) {
 }
 
 class TableWidget extends WidgetType {
-  constructor(private readonly source: string) {
+  constructor(
+    private readonly source: string,
+    private readonly block: boolean,
+  ) {
     super();
   }
 
   eq(other: TableWidget) {
-    return other.source === this.source;
+    return other.source === this.source && other.block === this.block;
   }
 
   toDOM() {
-    const rows = this.source
-      .trim()
-      .split("\n")
-      .map((line) =>
-        line
-          .trim()
-          .replace(/^\|/, "")
-          .replace(/\|$/, "")
-          .split("|")
-          .map((cell) => cell.trim()),
-      )
-      .filter((row) => !row.every((cell) => /^:?-+:?$/.test(cell)));
     const table = document.createElement("table");
-    table.className = "cm-table";
-    rows.forEach((row, index) => {
+    table.className = this.block ? "cm-table cm-block-edit" : "cm-table";
+    tableRows(this.source).forEach((row, index) => {
       const container = document.createElement(index === 0 ? "thead" : "tbody");
       const tr = document.createElement("tr");
       for (const cell of row) {
@@ -256,7 +274,11 @@ class TableWidget extends WidgetType {
       container.append(tr);
       table.append(container);
     });
-    return table;
+    return this.block ? blockFrame(table) : table;
+  }
+
+  ignoreEvent() {
+    return false;
   }
 }
 
@@ -279,13 +301,6 @@ function overlaps(ranges: Range[], from: number, to: number) {
   return ranges.some((range) => from < range.to && to > range.from);
 }
 
-function lineAligned(state: EditorState, from: number, to: number) {
-  if (from >= to) return false;
-  const start = state.doc.lineAt(from);
-  const end = state.doc.lineAt(to - 1);
-  return from === start.from && to === end.to;
-}
-
 function highlightCode(code: string, language: string) {
   try {
     if (language && hljs.getLanguage(language)) {
@@ -302,15 +317,6 @@ function renderMath(tex: string, display: boolean) {
     displayMode: display,
     throwOnError: false,
   });
-}
-
-function parseFence(source: string) {
-  const lines = source.replace(/\n$/, "").split("\n");
-  const info = lines[0]?.replace(/^```/, "").trim() ?? "";
-  const language = info.split(/\s+/)[0] ?? "";
-  const last = lines[lines.length - 1];
-  const closing = last?.startsWith("```") ? 1 : 0;
-  return { language, code: lines.slice(1, lines.length - closing).join("\n") };
 }
 
 const setFocused = StateEffect.define<boolean>();
@@ -334,26 +340,183 @@ const resting = StateField.define<boolean>({
   },
 });
 
+const setPointerDown = StateEffect.define<boolean>();
+
+/** True while the main mouse button is held down in the editor. */
+const pointerDown = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setPointerDown)) return effect.value;
+    }
+    return value;
+  },
+});
+
+/**
+ * True while editing from the keyboard. A block on lines of its own only opens as source then,
+ * for example while typing a new `$$` block; a click edits it in the pop-up instead.
+ */
+const keyboardEditing = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    if (tr.effects.some((effect) => effect.is(showRendered) || effect.is(openBlockEditor))) return false;
+    if (tr.isUserEvent("select.pointer")) return false;
+    if (tr.isUserEvent("input") || tr.isUserEvent("delete") || tr.isUserEvent("select")) return true;
+    return value;
+  },
+});
+
+/**
+ * Blocks swap between their rendered and source forms as the cursor enters and leaves them,
+ * which changes their height. Doing that on mouse-down moved the text under the pointer
+ * before the click finished, so the cursor landed on a lower line. The swap now waits for
+ * mouse-up, and the clicked line is scrolled back under the pointer afterwards.
+ */
+const pointerTracker = ViewPlugin.fromClass(
+  class {
+    constructor(readonly view: EditorView) {
+      this.release = this.release.bind(this);
+    }
+
+    press() {
+      window.addEventListener("mouseup", this.release);
+      window.addEventListener("blur", this.release);
+      this.view.dispatch({ effects: setPointerDown.of(true) });
+    }
+
+    release() {
+      window.removeEventListener("mouseup", this.release);
+      window.removeEventListener("blur", this.release);
+      // Let the editor finish its own mouse-up handling (the final selection) first.
+      window.setTimeout(() => {
+        const view = this.view;
+        if (!view.state.field(pointerDown, false)) return;
+        const head = view.state.selection.main.head;
+        const before = view.coordsAtPos(head)?.top ?? null;
+        view.dispatch({ effects: setPointerDown.of(false) });
+        if (before === null) return;
+        view.requestMeasure({
+          read: () => view.coordsAtPos(head)?.top ?? null,
+          write: (after) => {
+            if (after !== null && Math.abs(after - before) > 1) view.scrollDOM.scrollTop += after - before;
+          },
+        });
+      }, 0);
+    }
+
+    destroy() {
+      window.removeEventListener("mouseup", this.release);
+      window.removeEventListener("blur", this.release);
+    }
+  },
+  {
+    eventHandlers: {
+      mousedown(event) {
+        if (event.button === 0) this.press();
+        return false;
+      },
+    },
+  },
+);
+
+type MathTooltip = Tooltip & { tex: string };
+
+/** A live KaTeX rendering of the maths the cursor is typing into. */
+const mathPreview = StateField.define<MathTooltip | null>({
+  create: () => null,
+  update(value, tr) {
+    if (!tr.docChanged && !tr.selection && tr.effects.length === 0) return value;
+    return mathPreviewFor(tr.state, value);
+  },
+  provide: (field) => showTooltip.from(field),
+});
+
+function mathPreviewFor(state: EditorState, previous: MathTooltip | null): MathTooltip | null {
+  if (!state.field(editorFocused) || state.field(resting) || state.readOnly) return null;
+  const selection = state.selection.main;
+  if (!selection.empty) return null;
+  const text = state.doc.toString();
+  const math = mathAround(text, selection.head);
+  if (!math) return null;
+  const tex = text.slice(math.from, math.to).trim();
+  if (!tex) return null;
+  const pos = math.from - (math.display ? 2 : 1);
+  if (previous && previous.pos === pos && previous.tex === tex) return previous;
+  const display = math.display;
+  return {
+    pos,
+    tex,
+    above: true,
+    create: () => {
+      const dom = document.createElement("div");
+      dom.className = "cm-math-preview";
+      dom.innerHTML = renderMath(tex, display);
+      return { dom };
+    },
+  };
+}
+
 export function livePreview(handlers: LivePreviewHandlers) {
   const decorations = StateField.define<DecorationSet>({
     create(state) {
-      return buildDecorations(state, handlers, false);
+      return buildDecorations(state, handlers, false, false);
     },
     update(value, tr) {
       const refreshed = tr.effects.some((effect) => effect.is(refreshPreview));
       const focusChanged = tr.effects.some((effect) => effect.is(setFocused));
       const loaded = tr.effects.some((effect) => effect.is(showRendered));
-      if (!tr.docChanged && !tr.selection && !refreshed && !focusChanged && !loaded) return value;
+      const released = tr.effects.some((effect) => effect.is(setPointerDown) && !effect.value);
+      const modeChanged = tr.startState.field(keyboardEditing) !== tr.state.field(keyboardEditing);
+      // Hold the layout still while a click or drag is in progress.
+      if (tr.state.field(pointerDown) && !tr.docChanged && !refreshed && !loaded) return value;
+      if (!tr.docChanged && !tr.selection && !refreshed && !focusChanged && !loaded && !released && !modeChanged) {
+        return value;
+      }
       const showSource = tr.state.field(editorFocused) && !tr.state.field(resting) && !tr.state.readOnly;
-      return buildDecorations(tr.state, handlers, showSource);
+      const openBlocks = showSource && (tr.state.field(keyboardEditing) || !handlers.onEditBlock);
+      return buildDecorations(tr.state, handlers, showSource, openBlocks);
     },
     provide: (field) => EditorView.decorations.from(field),
   });
+
+  const blockClicks = EditorView.domEventHandlers({
+    mousedown(event, view) {
+      const target = event.target;
+      if (!handlers.onEditBlock || event.button !== 0 || view.state.readOnly) return false;
+      if (!(target instanceof Element) || target.closest(".cm-code-copy")) return false;
+      const box = target.closest(".cm-block-edit");
+      if (!box || !view.contentDOM.contains(box)) return false;
+      const block = blockAt(view.state, view.posAtDOM(box.closest(".cm-block-frame") ?? box));
+      if (!block) return false;
+      event.preventDefault();
+      handlers.onEditBlock(block);
+      return true;
+    },
+  });
+
+  const blockOpener = EditorView.updateListener.of((update) => {
+    if (!handlers.onEditBlock) return;
+    for (const tr of update.transactions) {
+      for (const effect of tr.effects) {
+        if (!effect.is(openBlockEditor)) continue;
+        const block = blockAt(update.state, effect.value.pos);
+        if (block) handlers.onEditBlock({ ...block, isNew: effect.value.isNew });
+      }
+    }
+  });
+
   return [
     editorFocused,
     resting,
+    keyboardEditing,
+    pointerDown,
+    blockClicks,
+    pointerTracker,
+    blockOpener,
     EditorView.focusChangeEffect.of((_state, focusing) => setFocused.of(focusing)),
     decorations,
+    mathPreview,
   ];
 }
 
@@ -361,9 +524,13 @@ function buildDecorations(
   state: EditorState,
   handlers: LivePreviewHandlers,
   showSource: boolean,
+  openBlocks: boolean,
 ): DecorationSet {
   const spans: Span[] = [];
   const blocked: Range[] = [];
+  // Blocks on lines of their own open only while editing from the keyboard; others as before.
+  const blockActive = (from: number, to: number) =>
+    (lineAligned(state, from, to) ? openBlocks : showSource) && coversSelection(state, from, to);
 
   syntaxTree(state).iterate({
     enter(node) {
@@ -372,7 +539,7 @@ function buildDecorations(
 
       if (name === "FencedCode") {
         blocked.push({ from, to });
-        if (!active) {
+        if (!blockActive(from, to)) {
           const { language, code } = parseFence(state.doc.sliceString(from, to));
           const block = lineAligned(state, from, to);
           spans.push({
@@ -390,14 +557,14 @@ function buildDecorations(
 
       if (name === "Table") {
         blocked.push({ from, to });
-        if (!active) {
+        if (!blockActive(from, to)) {
           const block = lineAligned(state, from, to);
           spans.push({
             from,
             to,
             replace: true,
             deco: Decoration.replace({
-              widget: new TableWidget(state.doc.sliceString(from, to)),
+              widget: new TableWidget(state.doc.sliceString(from, to), block),
               block,
             }),
           });
@@ -436,6 +603,8 @@ function buildDecorations(
       }
 
       if (name === "Link") {
+        // `[words]{.red}` is a coloured span, styled below, not a link.
+        if (state.doc.sliceString(to, to + 1) === "{") return false;
         const raw = state.doc.sliceString(from, to);
         const label = /^\[([^\]\n]*)\]/.exec(raw);
         if (label && label[1].length > 0) {
@@ -524,10 +693,10 @@ function buildDecorations(
   });
 
   const text = state.doc.toString();
-  for (const match of text.matchAll(/\$\$([\s\S]+?)\$\$/g)) {
+  for (const match of text.matchAll(DISPLAY_MATH)) {
     const from = match.index ?? 0;
     const to = from + match[0].length;
-    if (overlaps(blocked, from, to) || (showSource && coversSelection(state, from, to))) continue;
+    if (overlaps(blocked, from, to) || blockActive(from, to)) continue;
     blocked.push({ from, to });
     const block = lineAligned(state, from, to);
     spans.push({
@@ -536,9 +705,9 @@ function buildDecorations(
       replace: true,
       deco: Decoration.replace({
         widget: new HtmlWidget(
-          `math-block:${match[1]}`,
+          `math-block:${block}:${match[1]}`,
           renderMath(match[1] ?? "", true),
-          "cm-math cm-math-block",
+          block ? "cm-math cm-math-block cm-block-edit" : "cm-math cm-math-block",
           block,
         ),
         block,
@@ -573,7 +742,35 @@ function buildDecorations(
     if (!title || overlaps(blocked, from, to) || (showSource && coversSelection(state, from, to))) continue;
     spans.push({ from, to: from + 2, replace: false, deco: marker });
     spans.push({ from: to - 2, to, replace: false, deco: marker });
-    spans.push({ from: from + 2, to: to - 2, replace: false, deco: wikiStyle });
+    // `[[Title|alias]]` and `[[Title#section]]` open "Title".
+    const target = title.split("|")[0].split("#")[0].trim();
+    spans.push({
+      from: from + 2,
+      to: to - 2,
+      replace: false,
+      deco: Decoration.mark({ class: "cm-wiki", attributes: { "data-title": target || title } }),
+    });
+  }
+
+  // Not added to `blocked`, so highlights and larger words still work inside a colour.
+  for (const match of text.matchAll(colorSpanPattern())) {
+    const from = match.index ?? 0;
+    const to = from + match[0].length;
+    if (overlaps(blocked, from, to)) continue;
+    const innerTo = from + 1 + (match[1] ?? "").length;
+    const editing = selectionTouches(state, from, to);
+    const edge = editing ? marker : hide;
+    spans.push({ from, to: from + 1, replace: !editing, deco: edge });
+    spans.push({ from: innerTo, to, replace: !editing, deco: edge });
+    spans.push({
+      from: from + 1,
+      to: innerTo,
+      replace: false,
+      deco: Decoration.mark({
+        class: "cm-color",
+        attributes: { style: `color: ${colorOf(match[2], match[3])}` },
+      }),
+    });
   }
 
   for (const match of text.matchAll(/==([^=\n]+)==/g)) {
@@ -630,7 +827,6 @@ const marker = Decoration.mark({ class: "cm-md-mark" });
 const quoteLine = Decoration.line({ class: "cm-quote-line" });
 const linkStyle = Decoration.mark({ class: "cm-link" });
 const inlineCodeStyle = Decoration.mark({ class: "cm-inline-code" });
-const wikiStyle = Decoration.mark({ class: "cm-wiki" });
 const highlightStyle = Decoration.mark({ class: "cm-highlight" });
 
 function inlineStyle(name: string, raw: string) {

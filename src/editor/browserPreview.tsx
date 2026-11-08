@@ -14,7 +14,7 @@ const SAMPLE = `# Heading
 
 A sentence with *italic*, **bold**, ~~strike~~, and ==highlight==.
 
-++larger words++ stay in the text.
+++larger words++ stay in the text, and [coloured words]{.red} keep their [own colour]{color="#0ea5e9"}.
 
 - a list item
 - [ ] an open task
@@ -44,7 +44,10 @@ function Preview() {
         onChange={setBody}
         onOpenTitle={() => {}}
       />
-      <TextBubble onEnlarge={() => editorRef.current?.enlargeSelection()} />
+      <TextBubble
+        onEnlarge={() => editorRef.current?.enlargeSelection()}
+        onColor={(color, refocus) => editorRef.current?.colorSelection(color, refocus)}
+      />
     </div>
   );
 }

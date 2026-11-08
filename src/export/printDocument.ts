@@ -3,6 +3,7 @@ import hljsCss from "highlight.js/styles/github.css?raw";
 import katex from "katex";
 import katexCss from "katex/dist/katex.min.css?raw";
 import { DEFAULT_HIGHLIGHT, inkOn, readEditorType } from "../editor/fontSize";
+import { colorOf, colorSpanPattern } from "../editor/textColors";
 import { Marked } from "marked";
 
 export type PaperSize = "A4" | "Letter" | "A5";
@@ -76,7 +77,7 @@ function embedImages(body: string, images: ExportImage[]) {
 function renderBody(source: string) {
   const fenced = shield(source, (text) => fenceSlots(text));
   const inlined = shield(fenced.text, (text) => inlineSlots(text));
-  const sized = enlargeSpans(highlightSpans(inlined.text));
+  const sized = enlargeSpans(highlightSpans(colorSpans(inlined.text)));
   const maths = replaceMath(sized);
   const markdown = restore(
     restore(maths.text, "EYJASLOT", inlined.slots),
@@ -98,6 +99,13 @@ function restoreMath(html: string, display: string[], inline: string[]) {
     next = next.split(`EYJAMATHI${index}END`).join(math);
   });
   return next;
+}
+
+// Inline Markdown between the span tags is still parsed, so the text is left as it is.
+function colorSpans(text: string) {
+  return text.replace(colorSpanPattern(), (_match, inner: string, name?: string, hex?: string) => {
+    return `<span style="color: ${colorOf(name, hex)}">${inner}</span>`;
+  });
 }
 
 function highlightSpans(text: string) {

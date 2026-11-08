@@ -2,7 +2,11 @@ mod assets;
 mod db;
 mod documents;
 mod export;
+mod links;
 mod memo;
+mod organize;
+mod samples;
+mod search;
 mod settings;
 mod shell;
 mod versions;
@@ -95,6 +99,22 @@ pub fn run() {
             settings::set_memo_shortcut,
             settings::set_memo_retention,
             settings::set_window_size,
+            settings::set_history_settings,
+            settings::set_max_tags,
+            organize::list_tags,
+            organize::set_document_tags,
+            organize::list_folders,
+            organize::create_folder,
+            organize::rename_folder,
+            organize::move_folder,
+            organize::delete_folder,
+            organize::set_document_folder,
+            organize::set_document_pinned,
+            organize::set_document_favorite,
+            organize::set_document_cover,
+            samples::create_samples,
+            search::search_documents,
+            search::similar_documents,
             shell::take_pending_document,
         ])
         .build(tauri::generate_context!())

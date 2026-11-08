@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::Connection;
+use rusqlite::{ffi, Connection};
 use tauri::{Manager, Runtime};
 
 pub struct AppDb(pub std::sync::Mutex<Connection>);
@@ -70,6 +70,48 @@ CREATE INDEX idx_documents_updated ON documents(updated_at);
 CREATE INDEX idx_documents_deleted ON documents(deleted_at);
 ";
 
+/// Search indexes. The trigram tokenizer matches inside words, so Chinese text with no
+/// spaces is searchable too. Vectors are filled in lazily by `search::refresh_vectors`.
+const MIGRATION_V4: &str = "
+CREATE VIRTUAL TABLE documents_fts USING fts5(
+    id UNINDEXED,
+    title,
+    body,
+    tokenize = 'trigram'
+);
+INSERT INTO documents_fts (id, title, body) SELECT id, title, body FROM documents;
+
+CREATE TRIGGER documents_fts_insert AFTER INSERT ON documents BEGIN
+    INSERT INTO documents_fts (id, title, body) VALUES (new.id, new.title, new.body);
+END;
+CREATE TRIGGER documents_fts_update AFTER UPDATE OF title, body ON documents BEGIN
+    DELETE FROM documents_fts WHERE id = old.id;
+    INSERT INTO documents_fts (id, title, body) VALUES (new.id, new.title, new.body);
+END;
+CREATE TRIGGER documents_fts_delete AFTER DELETE ON documents BEGIN
+    DELETE FROM documents_fts WHERE id = old.id;
+END;
+
+CREATE VIRTUAL TABLE document_vectors USING vec0(
+    document_id TEXT PRIMARY KEY,
+    embedding float[512] distance_metric=cosine
+);
+CREATE TABLE document_vector_state (
+    document_id TEXT PRIMARY KEY,
+    updated_at INTEGER NOT NULL,
+    version INTEGER NOT NULL
+);
+CREATE TRIGGER documents_vector_stale AFTER UPDATE OF title, body ON documents BEGIN
+    DELETE FROM document_vector_state WHERE document_id = old.id;
+END;
+
+CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag_id);
+CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_id);
+CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_id);
+CREATE INDEX IF NOT EXISTS idx_documents_folder ON documents(folder_id);
+CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_id);
+";
+
 pub fn storage_dir<R: Runtime, M: Manager<R>>(app: &M) -> Result<PathBuf, String> {
     let mut dir = app.path().app_data_dir().map_err(|err| err.to_string())?;
     if cfg!(debug_assertions) {
@@ -94,7 +136,37 @@ pub fn open(app: &tauri::App) -> Result<Connection, Box<dyn std::error::Error>> 
     Ok(conn)
 }
 
+/// Registers sqlite-vec on this connection. It is compiled into the binary, so nothing is
+/// loaded from disk.
+fn load_vec(conn: &Connection) -> rusqlite::Result<()> {
+    if conn
+        .query_row("SELECT vec_version()", [], |row| row.get::<_, String>(0))
+        .is_ok()
+    {
+        return Ok(());
+    }
+    type Init = unsafe extern "C" fn(
+        *mut ffi::sqlite3,
+        *mut *mut std::os::raw::c_char,
+        *const ffi::sqlite3_api_routines,
+    ) -> std::os::raw::c_int;
+    // SAFETY: `sqlite3_vec_init` is the extension entry point with exactly this signature;
+    // the crate declares it without arguments only so it can be passed around as a pointer.
+    let code = unsafe {
+        let init: Init = std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ());
+        init(conn.handle(), std::ptr::null_mut(), std::ptr::null())
+    };
+    if code != ffi::SQLITE_OK {
+        return Err(rusqlite::Error::SqliteFailure(
+            ffi::Error::new(code),
+            Some("Could not load sqlite-vec".to_string()),
+        ));
+    }
+    Ok(())
+}
+
 pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    load_vec(conn)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_migrations (
             version INTEGER PRIMARY KEY,
@@ -143,6 +215,15 @@ pub fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         )?;
         tx.commit()?;
     }
+    if version < 4 {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(MIGRATION_V4)?;
+        tx.execute(
+            "INSERT INTO schema_migrations (version, applied_at) VALUES (4, ?1)",
+            [now_ms()],
+        )?;
+        tx.commit()?;
+    }
     Ok(())
 }
 
@@ -169,6 +250,33 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 3);
+        assert_eq!(version, 4);
+    }
+
+    #[test]
+    fn search_index_follows_documents() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO documents (id, kind, title, body, created_at, updated_at)
+             VALUES ('a', 'note', 'Heat', '熱方程式的解', 0, 0)",
+            [],
+        )
+        .unwrap();
+        let count = |query: &str| -> i64 {
+            conn.query_row(
+                "SELECT COUNT(*) FROM documents_fts WHERE documents_fts MATCH ?1",
+                [query],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(count("\"方程式\""), 1);
+        conn.execute("UPDATE documents SET body = 'nothing here' WHERE id = 'a'", [])
+            .unwrap();
+        assert_eq!(count("\"方程式\""), 0);
+        assert_eq!(count("\"nothing\""), 1);
+        conn.execute("DELETE FROM documents WHERE id = 'a'", []).unwrap();
+        assert_eq!(count("\"nothing\""), 0);
     }
 }

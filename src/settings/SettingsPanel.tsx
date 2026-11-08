@@ -3,24 +3,64 @@ import { Icon, type IconName, SymButton } from "../memo/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { type KeyboardEvent, useEffect, useState } from "react";
+import { type HistoryRetention, type Settings, tzOffsetMinutes, type WindowSize } from "../api";
 
-type WindowSize = "small" | "medium" | "large";
-
-type Settings = {
-  memoShortcut: string;
-  memoShortcutActive: boolean;
-  memoRetentionDays: number | null;
-  memoSize: WindowSize;
-  mainSize: WindowSize;
-};
-
-type Tab = "text" | "windows" | "memo";
+type Tab = "text" | "windows" | "memo" | "timeline";
 
 const TABS: { id: Tab; label: string; title: string; icon: IconName }[] = [
   { id: "text", label: "Text & colors", title: "Text and appearance", icon: "text" },
   { id: "windows", label: "Windows", title: "Window sizes", icon: "window" },
   { id: "memo", label: "Quick memo", title: "Quick memo", icon: "memo" },
+  { id: "timeline", label: "Timeline & tags", title: "Timeline and library", icon: "history" },
 ];
+
+const RETENTIONS: { id: HistoryRetention; label: string }[] = [
+  { id: "all", label: "Keep all" },
+  { id: "daily", label: "Last per day" },
+];
+
+function NumberField({
+  label,
+  value,
+  unit,
+  max,
+  onCommit,
+}: {
+  label: string;
+  value: number;
+  unit: string;
+  max: number;
+  onCommit: (value: number) => void;
+}) {
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+  const commit = () => {
+    const next = Number(text);
+    if (Number.isInteger(next) && next >= 1 && next <= max && next !== value) {
+      onCommit(next);
+    } else {
+      setText(String(value));
+    }
+  };
+  return (
+    <div className="setting-controls">
+      <input
+        className="num-input"
+        type="number"
+        min={1}
+        max={max}
+        value={text}
+        aria-label={label}
+        onChange={(event) => setText(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") commit();
+        }}
+      />
+      <span>{unit}</span>
+    </div>
+  );
+}
 
 const DEFAULT_RETENTION_DAYS = 30;
 const SIZES: { id: WindowSize; label: string }[] = [
@@ -77,21 +117,69 @@ function shortcutFromEvent(event: KeyboardEvent) {
   return [...parts, key].join("+");
 }
 
-export function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const [settings, setSettings] = useState<Settings | null>(null);
+export function SettingsPanel({
+  onClose,
+  onSettingsChange,
+}: {
+  onClose: () => void;
+  onSettingsChange?: (settings: Settings) => void;
+}) {
+  const [settings, setLoaded] = useState<Settings | null>(null);
   const [tab, setTab] = useState<Tab>("text");
   const [recording, setRecording] = useState(false);
   const [days, setDays] = useState(String(DEFAULT_RETENTION_DAYS));
   const [error, setError] = useState("");
 
+  function setSettings(next: Settings) {
+    setLoaded(next);
+    onSettingsChange?.(next);
+  }
+
   useEffect(() => {
     invoke<Settings>("get_settings")
       .then((loaded) => {
-        setSettings(loaded);
+        setLoaded(loaded);
         if (loaded.memoRetentionDays) setDays(String(loaded.memoRetentionDays));
       })
       .catch((err: unknown) => setError(String(err)));
   }, []);
+
+  async function saveHistory(change: Partial<Pick<Settings, "historyIdleMinutes" | "historyTypingMinutes" | "historyRetention">>) {
+    if (!settings) return;
+    setError("");
+    const next = { ...settings, ...change };
+    if (
+      change.historyRetention === "daily" &&
+      settings.historyRetention !== "daily" &&
+      !(await confirm(
+        "Versions from earlier days will be thinned now, keeping the last version of each day. Continue?",
+        { kind: "warning", okLabel: "Keep last per day" },
+      ))
+    ) {
+      return;
+    }
+    try {
+      setSettings(
+        await invoke<Settings>("set_history_settings", {
+          idleMinutes: next.historyIdleMinutes,
+          typingMinutes: next.historyTypingMinutes,
+          retention: next.historyRetention,
+          tzOffsetMinutes: tzOffsetMinutes(),
+        }),
+      );
+    } catch (err: unknown) {
+      setError(String(err));
+    }
+  }
+
+  async function saveMaxTags(maxTags: number) {
+    setError("");
+    try {
+      setSettings(await invoke<Settings>("set_max_tags", { maxTags }));
+    } catch (err: unknown) {
+      setError(String(err));
+    }
+  }
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
@@ -287,6 +375,80 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
                     />
                     <span>days</span>
                   </div>
+                </div>
+              </div>
+            ) : null}
+            {tab === "timeline" && settings ? (
+              <div className="setting-group">
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Version after a pause</span>
+                    <span className="setting-desc">
+                      Adds a version to the timeline once you stop typing this long
+                    </span>
+                  </div>
+                  <NumberField
+                    label="Minutes idle before a version"
+                    value={settings.historyIdleMinutes}
+                    unit="minutes"
+                    max={120}
+                    onCommit={(value) => void saveHistory({ historyIdleMinutes: value })}
+                  />
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Version while typing</span>
+                    <span className="setting-desc">
+                      During long stretches of writing, adds at least one version this often
+                    </span>
+                  </div>
+                  <NumberField
+                    label="Minutes of typing before a version"
+                    value={settings.historyTypingMinutes}
+                    unit="minutes"
+                    max={240}
+                    onCommit={(value) => void saveHistory({ historyTypingMinutes: value })}
+                  />
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Older versions</span>
+                    <span className="setting-desc">
+                      Keep every version, or only the last version of each earlier day. Today is
+                      always kept in full.
+                    </span>
+                  </div>
+                  <div className="seg-control" role="radiogroup" aria-label="Older versions">
+                    {RETENTIONS.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={settings.historyRetention === item.id}
+                        className={
+                          settings.historyRetention === item.id ? "seg-btn active" : "seg-btn"
+                        }
+                        onClick={() => void saveHistory({ historyRetention: item.id })}
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Tags per document</span>
+                    <span className="setting-desc">
+                      Most tags a note or memo can have. Lowering it keeps tags already set.
+                    </span>
+                  </div>
+                  <NumberField
+                    label="Most tags per document"
+                    value={settings.maxTags}
+                    unit="tags"
+                    max={20}
+                    onCommit={(value) => void saveMaxTags(value)}
+                  />
                 </div>
               </div>
             ) : null}

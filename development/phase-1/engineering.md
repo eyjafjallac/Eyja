@@ -37,10 +37,10 @@ GitHub Actions 先跑 Rust 測試，以及前端能一起建置。不在前期�
 
 這組是做完才勾，不用寫 `A:`。
 
-- [ ] Tauri 專案放進這個 repo，視窗打得開
-- [ ] 前端能呼叫一個 Rust command
-- [ ] SQLite、第一版 schema、migration 能在乾淨目錄建起來
-- [ ] CI 會跑測試
+- [x] Tauri 專案放進這個 repo，視窗打得開
+- [x] 前端能呼叫一個 Rust command
+- [x] SQLite、第一版 schema、migration 能在乾淨目錄建起來
+- [x] CI 會跑測試
 
 
 

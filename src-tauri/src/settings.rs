@@ -3,17 +3,31 @@ use serde::Serialize;
 use tauri::{AppHandle, LogicalSize, Manager, State, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
-use crate::db::{assets_dir, AppDb};
+use crate::db::{assets_dir, now_ms, AppDb};
 use crate::memo;
+use crate::versions;
 
 pub const DEFAULT_MEMO_SHORTCUT: &str = "Ctrl+Shift+M";
 const MEMO_SHORTCUT: &str = "memo_shortcut";
 const MEMO_RETENTION_DAYS: &str = "memo_retention_days";
 const MEMO_WINDOW_SIZE: &str = "memo_window_size";
 const MAIN_WINDOW_SIZE: &str = "main_window_size";
+const HISTORY_IDLE_MINUTES: &str = "history_idle_minutes";
+const HISTORY_TYPING_MINUTES: &str = "history_typing_minutes";
+const HISTORY_RETENTION: &str = "history_retention";
+const MAX_TAGS: &str = "max_tags";
 const SIZES: [&str; 3] = ["small", "medium", "large"];
 const DEFAULT_SIZE: &str = "medium";
 pub const MAIN_LABEL: &str = "main";
+
+pub const DEFAULT_IDLE_MINUTES: u32 = 2;
+pub const DEFAULT_TYPING_MINUTES: u32 = 5;
+const MAX_IDLE_MINUTES: u32 = 120;
+const MAX_TYPING_MINUTES: u32 = 240;
+/// `all` keeps every version; `daily` keeps only the last version of each past day.
+const RETENTIONS: [&str; 2] = ["all", "daily"];
+pub const DEFAULT_MAX_TAGS: u32 = 5;
+const MAX_TAGS_LIMIT: u32 = 20;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,6 +37,10 @@ pub struct Settings {
     pub memo_retention_days: Option<u32>,
     pub memo_size: String,
     pub main_size: String,
+    pub history_idle_minutes: u32,
+    pub history_typing_minutes: u32,
+    pub history_retention: String,
+    pub max_tags: u32,
 }
 
 fn memo_dimensions(size: &str) -> (f64, f64) {
@@ -128,6 +146,67 @@ pub fn set_window_size(app: AppHandle, target: String, size: String) -> Result<S
     current(&app)
 }
 
+/// `tz_offset_minutes` is the caller's `Date.getTimezoneOffset()`, so "a day" is a local day.
+#[tauri::command]
+pub fn set_history_settings(
+    app: AppHandle,
+    idle_minutes: u32,
+    typing_minutes: u32,
+    retention: String,
+    tz_offset_minutes: i32,
+) -> Result<Settings, String> {
+    if !(1..=MAX_IDLE_MINUTES).contains(&idle_minutes) {
+        return Err(format!("Use 1 to {MAX_IDLE_MINUTES} minutes for the idle version."));
+    }
+    if !(1..=MAX_TYPING_MINUTES).contains(&typing_minutes) {
+        return Err(format!("Use 1 to {MAX_TYPING_MINUTES} minutes for the typing version."));
+    }
+    if !RETENTIONS.contains(&retention.as_str()) {
+        return Err(format!("Unknown retention \"{retention}\""));
+    }
+    {
+        let db = app.state::<AppDb>();
+        let conn = lock(&db)?;
+        let tx = conn.unchecked_transaction().map_err(|err| err.to_string())?;
+        set_value(&tx, HISTORY_IDLE_MINUTES, Some(&idle_minutes.to_string()))?;
+        set_value(&tx, HISTORY_TYPING_MINUTES, Some(&typing_minutes.to_string()))?;
+        set_value(&tx, HISTORY_RETENTION, Some(&retention))?;
+        if retention == "daily" {
+            versions::compact_all(&tx, tz_offset_minutes, now_ms())?;
+        }
+        tx.commit().map_err(|err| err.to_string())?;
+    }
+    current(&app)
+}
+
+#[tauri::command]
+pub fn set_max_tags(app: AppHandle, max_tags: u32) -> Result<Settings, String> {
+    if !(1..=MAX_TAGS_LIMIT).contains(&max_tags) {
+        return Err(format!("Use 1 to {MAX_TAGS_LIMIT} tags."));
+    }
+    {
+        let db = app.state::<AppDb>();
+        let conn = lock(&db)?;
+        set_value(&conn, MAX_TAGS, Some(&max_tags.to_string()))?;
+    }
+    current(&app)
+}
+
+fn number_value(conn: &Connection, key: &str, default: u32, max: u32) -> Result<u32, String> {
+    Ok(get_value(conn, key)?
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| (1..=max).contains(value))
+        .unwrap_or(default))
+}
+
+pub(crate) fn max_tags(conn: &Connection) -> Result<u32, String> {
+    number_value(conn, MAX_TAGS, DEFAULT_MAX_TAGS, MAX_TAGS_LIMIT)
+}
+
+pub(crate) fn keeps_daily_versions(conn: &Connection) -> Result<bool, String> {
+    Ok(get_value(conn, HISTORY_RETENTION)?.as_deref() == Some("daily"))
+}
+
 pub(crate) fn memo_window_size(conn: &Connection) -> Result<(f64, f64), String> {
     Ok(memo_dimensions(&size_value(conn, MEMO_WINDOW_SIZE)?))
 }
@@ -179,26 +258,36 @@ pub(crate) fn memo_retention_days(conn: &Connection) -> Result<Option<u32>, Stri
 }
 
 fn current(app: &AppHandle) -> Result<Settings, String> {
-    let (memo_shortcut, memo_retention_days, memo_size, main_size) = {
+    let mut settings = {
         let db = app.state::<AppDb>();
         let conn = lock(&db)?;
-        (
-            memo_shortcut(&conn)?,
-            memo_retention_days(&conn)?,
-            size_value(&conn, MEMO_WINDOW_SIZE)?,
-            size_value(&conn, MAIN_WINDOW_SIZE)?,
-        )
+        stored(&conn)?
     };
-    let memo_shortcut_active = memo_shortcut
+    settings.memo_shortcut_active = settings
+        .memo_shortcut
         .parse::<Shortcut>()
         .map(|shortcut| app.global_shortcut().is_registered(shortcut))
         .unwrap_or(false);
+    Ok(settings)
+}
+
+/// Everything except whether the shortcut is registered, which only the app knows.
+fn stored(conn: &Connection) -> Result<Settings, String> {
     Ok(Settings {
-        memo_shortcut,
-        memo_shortcut_active,
-        memo_retention_days,
-        memo_size,
-        main_size,
+        memo_shortcut: memo_shortcut(conn)?,
+        memo_shortcut_active: false,
+        memo_retention_days: memo_retention_days(conn)?,
+        memo_size: size_value(conn, MEMO_WINDOW_SIZE)?,
+        main_size: size_value(conn, MAIN_WINDOW_SIZE)?,
+        history_idle_minutes: number_value(conn, HISTORY_IDLE_MINUTES, DEFAULT_IDLE_MINUTES, MAX_IDLE_MINUTES)?,
+        history_typing_minutes: number_value(
+            conn,
+            HISTORY_TYPING_MINUTES,
+            DEFAULT_TYPING_MINUTES,
+            MAX_TYPING_MINUTES,
+        )?,
+        history_retention: if keeps_daily_versions(conn)? { "daily" } else { "all" }.to_string(),
+        max_tags: max_tags(conn)?,
     })
 }
 
@@ -253,6 +342,27 @@ mod tests {
         assert_eq!(memo_window_size(&conn).unwrap(), (260.0, 300.0));
         set_value(&conn, MAIN_WINDOW_SIZE, Some("huge")).unwrap();
         assert_eq!(size_value(&conn, MAIN_WINDOW_SIZE).unwrap(), "medium");
+    }
+
+    #[test]
+    fn library_settings_default_and_ignore_bad_values() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let settings = stored(&conn).unwrap();
+        assert_eq!(settings.history_idle_minutes, 2);
+        assert_eq!(settings.history_typing_minutes, 5);
+        assert_eq!(settings.history_retention, "all");
+        assert_eq!(settings.max_tags, 5);
+
+        set_value(&conn, HISTORY_IDLE_MINUTES, Some("0")).unwrap();
+        set_value(&conn, HISTORY_TYPING_MINUTES, Some("12")).unwrap();
+        set_value(&conn, HISTORY_RETENTION, Some("daily")).unwrap();
+        set_value(&conn, MAX_TAGS, Some("99")).unwrap();
+        let settings = stored(&conn).unwrap();
+        assert_eq!(settings.history_idle_minutes, 2);
+        assert_eq!(settings.history_typing_minutes, 12);
+        assert_eq!(settings.history_retention, "daily");
+        assert_eq!(settings.max_tags, 5);
     }
 
     #[test]

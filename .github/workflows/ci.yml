@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  rust:
+    name: Rust tests
+    # Windows needs no extra WebView packages, and Edge is there for the PDF export test.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # `generate_context!` checks that `frontendDist` exists; the tests do not need its files.
+      - name: Placeholder frontend output
+        shell: bash
+        run: mkdir -p dist
+      - name: Test
+        working-directory: src-tauri
+        run: cargo test --locked

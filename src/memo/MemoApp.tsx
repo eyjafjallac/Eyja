@@ -13,8 +13,16 @@ import {
   savePastedImages,
   withoutAssetLinks,
 } from "../assets";
+import {
+  DEFAULT_MAX_TAGS,
+  type DocumentSummary,
+  type Settings,
+  type TagCount,
+  tzOffsetMinutes,
+} from "../api";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../editor/MarkdownEditor";
 import { TextBubble } from "../editor/TextBubble";
+import { TagEditor } from "../tags/TagEditor";
 import { updatedAgo } from "../time";
 import { Icon, SymButton } from "./Icon";
 import "./memo.css";
@@ -51,11 +59,7 @@ type Memo = {
   color: MemoColor | null;
   updatedAt: number;
   assets: Asset[];
-};
-
-type NoteSummary = {
-  id: string;
-  title: string;
+  tags: string[];
 };
 
 export const MEMO_LABEL_PREFIX = "memo-";
@@ -77,15 +81,13 @@ function memoLabel(title: string, preview: string) {
   return title.trim() || preview.trim() || "Empty memo";
 }
 
-function displayTitle(title: string) {
-  const trimmed = title.trim();
-  return trimmed.length > 0 ? trimmed : "Untitled";
-}
-
 export function MemoApp() {
   const [memos, setMemos] = useState<MemoSummary[]>([]);
   const [current, setCurrent] = useState<Memo | null>(null);
-  const [notes, setNotes] = useState<NoteSummary[]>([]);
+  const [notes, setNotes] = useState<DocumentSummary[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [tagNames, setTagNames] = useState<string[]>([]);
+  const [maxTags, setMaxTags] = useState(DEFAULT_MAX_TAGS);
   const [listOpen, setListOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -134,7 +136,7 @@ export function MemoApp() {
     if (!currentRef.current) return;
     await flush();
     try {
-      await invoke("record_version", { id: memoId });
+      await invoke("record_version", { id: memoId, tzOffsetMinutes: tzOffsetMinutes() });
     } catch {
       // The memo may already be gone, for example deleted from the editor.
     }
@@ -153,7 +155,14 @@ export function MemoApp() {
       return;
     }
     show(loaded);
-    setNotes(await invoke<NoteSummary[]>("list_documents"));
+    const [docs, tags, settings] = await Promise.all([
+      invoke<DocumentSummary[]>("list_documents"),
+      invoke<TagCount[]>("list_tags"),
+      invoke<Settings>("get_settings"),
+    ]);
+    setNotes(docs.filter((doc) => doc.id !== memoId && doc.title.trim().length > 0));
+    setTagNames(tags.map((tag) => tag.name));
+    setMaxTags(settings.maxTags);
   }, [show]);
 
   const addAssets = useCallback(
@@ -328,10 +337,19 @@ export function MemoApp() {
     }
   }
 
+  async function saveTags(tags: string[]) {
+    const stored = await invoke<string[]>("set_document_tags", { id: memoId, tags });
+    patch({ tags: stored });
+    const all = await invoke<TagCount[]>("list_tags");
+    setTagNames(all.map((tag) => tag.name));
+  }
+
   function openTitle(title: string) {
-    const note = notes.find((item) => displayTitle(item.title) === title);
+    const note =
+      notes.find((item) => item.title.trim() === title) ??
+      notes.find((item) => item.title.trim().toLowerCase() === title.toLowerCase());
     if (!note) {
-      setError(`No note named "${title}"`);
+      setError(`No document named "${title}"`);
       return;
     }
     void flush()
@@ -461,7 +479,7 @@ export function MemoApp() {
                 <MarkdownEditor
                   ref={editorRef}
                   value={current.body}
-                  titles={notes.map((note) => displayTitle(note.title))}
+                  titles={notes.map((note) => note.title.trim())}
                   placeholder="Jot something down. Drop files or paste images here."
                   resolveImage={resolveImage}
                   onChange={changeBody}
@@ -472,6 +490,7 @@ export function MemoApp() {
                   compact
                   shown={lastActive}
                   onEnlarge={() => editorRef.current?.enlargeSelection()}
+                  onColor={(color, refocus) => editorRef.current?.colorSelection(color, refocus)}
                 />
               </>
             ) : null}
@@ -501,6 +520,17 @@ export function MemoApp() {
               ))}
             </ul>
           ) : null}
+          {current && (tagsOpen || current.tags.length > 0) ? (
+            <div className="memo-tags">
+              <TagEditor
+                compact
+                tags={current.tags}
+                max={maxTags}
+                suggestions={tagNames}
+                onChange={(tags) => run(() => saveTags(tags))}
+              />
+            </div>
+          ) : null}
           <footer className="memo-foot">
             <SymButton
               icon="file"
@@ -517,6 +547,15 @@ export function MemoApp() {
               tipAlign="left"
               disabled={!current || busy}
               onClick={() => run(() => pick(true))}
+            />
+            <SymButton
+              icon="tag"
+              label="Tags"
+              tipPos="top"
+              tipAlign="left"
+              pressed={tagsOpen || (current?.tags.length ?? 0) > 0}
+              disabled={!current}
+              onClick={() => setTagsOpen((value) => !value)}
             />
             <span className="memo-status">{busy ? "Copying..." : ""}</span>
             <SymButton

@@ -13,6 +13,7 @@ import {
   writeEditorFontSize,
   writeEditorLineHeight,
 } from "./fontSize";
+import { TEXT_COLORS, type TextColor } from "./textColors";
 
 const FONT_LABELS: Record<EditorFont, string> = {
   sans: "Sans",
@@ -31,19 +32,23 @@ function keepFocus(event: MouseEvent) {
 
 /**
  * Floating glass bubble with the text controls. Size, typeface and line spacing are shared by
- * every window; "enlarge" acts on the selection of the editor it sits in.
+ * every window; "enlarge" and the colours act on the selection of the editor it sits in.
  */
 export function TextBubble({
   shown = true,
   compact = false,
   onEnlarge,
+  onColor,
 }: {
   shown?: boolean;
   /** Smaller bubble without typeface and line spacing, for memo windows. */
   compact?: boolean;
   onEnlarge: () => void;
+  /** Colour the selected words; `null` goes back to the default colour. */
+  onColor: (color: TextColor | null, refocus?: boolean) => void;
 }) {
   const [type, setType] = useState(readEditorType);
+  const [custom, setCustom] = useState("#3b82f6");
 
   useEffect(() => watchEditorType(setType), []);
 
@@ -97,6 +102,43 @@ export function TextBubble({
         >
           <Icon name="enlarge" size={14} />
         </button>
+        <div className="glass-divider" />
+        <div className="color-swatches-inline" role="group" aria-label="Selected text color">
+          <button
+            type="button"
+            className="text-color-dot default"
+            data-tip="Default text color"
+            data-tip-pos="top"
+            aria-label="Default text color"
+            onClick={() => onColor(null)}
+          />
+          {TEXT_COLORS.map((color) => (
+            <button
+              key={color.name}
+              type="button"
+              className="text-color-dot"
+              style={{ background: color.value }}
+              data-tip={`${color.label} text`}
+              data-tip-pos="top"
+              aria-label={`${color.label} text`}
+              onClick={() => onColor(color.name)}
+            />
+          ))}
+          <input
+            type="color"
+            className="custom-color-input"
+            value={custom}
+            data-tip="Custom text color"
+            data-tip-pos="top"
+            aria-label="Custom text color"
+            // Let the native picker open; the toolbar otherwise cancels the press.
+            onMouseDown={(event) => event.stopPropagation()}
+            onChange={(event) => {
+              setCustom(event.target.value);
+              onColor(event.target.value, false);
+            }}
+          />
+        </div>
         {compact ? null : (
           <>
             <div className="glass-divider" />

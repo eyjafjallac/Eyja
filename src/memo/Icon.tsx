@@ -21,6 +21,20 @@ const paths = {
   back: "M15.5 10h-11M8.5 6l-4 4 4 4",
   text: "M4 5h12M10 5v11M6.5 16h7",
   window: "M5 4h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 8h14",
+  star: "M10 3.5l1.9 4 4.4.5-3.3 3 .9 4.3L10 13.1l-3.9 2.2.9-4.3-3.3-3 4.4-.5z",
+  tag: "M3.5 4.5v5l7 7 6-6-7-7zM7 7.5h.01",
+  search: "M8.75 3.5a5.25 5.25 0 1 0 0 10.5 5.25 5.25 0 0 0 0-10.5zM12.5 12.5l4 4",
+  book: "M5 4.5h7.5a2 2 0 0 1 2 2v9H7a2 2 0 0 1-2-2zM5 13.5a2 2 0 0 1 2-2h7.5",
+  split: "M5 4h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM10 4v12",
+  image:
+    "M5 4h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3.5 13.5l4-4 3.5 3.5 2-2 3.5 3.5M12.5 7.5h.01",
+  home: "M3.5 9.5 10 4l6.5 5.5M5.5 8v8h9V8",
+  right: "M4.5 10h11M11.5 6l4 4-4 4",
+  left: "M15.5 10h-11M8.5 6l-4 4 4 4",
+  chevron: "M8 5.5l4.5 4.5L8 14.5",
+  edit: "M4 16l1-4 8.5-8.5 3 3L8 15zM11.5 5.5l3 3",
+  similar: "M10 3.5v3M10 13.5v3M3.5 10h3M13.5 10h3M5.5 5.5l2 2M12.5 12.5l2 2M14.5 5.5l-2 2M7.5 12.5l-2 2",
+  folderPlus: "M3.5 6h5l1.5 1.5h6.5v8h-13zM10 9.5v4M8 11.5h4",
 } as const;
 
 export type IconName = keyof typeof paths;
@@ -54,9 +68,11 @@ export function SymButton({
   size,
   tipPos,
   tipAlign,
+  className,
   onClick,
 }: {
   icon: IconName;
+  className?: string;
   label: string;
   /** Set only for toggles; it drives `aria-pressed` and the active look. */
   pressed?: boolean;
@@ -71,6 +87,7 @@ export function SymButton({
   if (size) classes.push(size);
   if (pressed) classes.push("active");
   if (danger) classes.push("danger");
+  if (className) classes.push(className);
   return (
     <button
       type="button"

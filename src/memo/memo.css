@@ -261,6 +261,18 @@
   color: var(--status-danger);
 }
 
+.memo-tags {
+  flex: none;
+  padding: 5px 10px;
+  border-top: 1px solid var(--memo-line);
+}
+
+.memo-tags .tag-pill.accent {
+  background: var(--memo-chip);
+  border-color: var(--memo-border);
+  color: var(--text-primary);
+}
+
 .memo-foot {
   flex: none;
   display: flex;

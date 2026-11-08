@@ -14,16 +14,25 @@ import {
   keymap,
   placeholder as placeholderExtension,
 } from "@codemirror/view";
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import "highlight.js/styles/github.css";
 import "katex/dist/katex.min.css";
+import { type BlockAnchor, BlockEditor } from "./BlockEditor";
+import type { EditableBlock } from "./blocks";
 import { mathCompletion, slashCompletion } from "./complete";
+import { promptTheme } from "./editorTheme";
 import { livePreview, refreshPreview, showRendered } from "./livePreview";
+import { colorAttribute, colorSpanPattern, type TextColor } from "./textColors";
 
 export type MarkdownEditorHandle = {
   insert: (text: string, cursor?: number) => void;
   /** Wrap the selection in `++ ++`, or remove that wrapper if it is already there. */
   enlargeSelection: () => void;
+  /**
+   * Colour the selection as `[words]{.red}`, or recolour the span the selection sits in.
+   * `null` removes the colour.
+   */
+  colorSelection: (color: TextColor | null, refocus?: boolean) => void;
   /** Type `[[` at the cursor and open the list of document titles. */
   insertReference: () => void;
   focus: () => void;
@@ -40,58 +49,15 @@ type MarkdownEditorProps = {
   onPasteImages?: (files: File[]) => void;
 };
 
-const promptTheme = {
-  ".cm-tooltip.cm-tooltip-autocomplete": {
-    padding: "6px",
-    backgroundColor: "var(--bg-elevated)",
-    color: "var(--text-primary)",
-    border: "1px solid var(--border-strong)",
-    borderRadius: "var(--radius-md)",
-    boxShadow: "var(--shadow-md)",
-    fontFamily: "var(--font-sans)",
-    fontSize: "12.5px",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul": {
-    fontFamily: "inherit",
-    maxHeight: "320px",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
-    padding: "5px 8px",
-    borderRadius: "6px",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--text-on-accent)",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected] .cm-completionDetail": {
-    color: "inherit",
-    opacity: "0.8",
-  },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > completion-section": {
-    padding: "4px 8px 4px",
-    color: "var(--text-muted)",
-    fontFamily: "inherit",
-    fontSize: "10.5px",
-    fontWeight: "600",
-    letterSpacing: "0.04em",
-    textTransform: "uppercase",
-    opacity: "1",
-    border: "0",
-  },
-  ".cm-completionLabel": {
-    fontFamily: "var(--font-mono)",
-    fontWeight: "500",
-  },
-  ".cm-completionDetail": {
-    marginLeft: "16px",
-    fontStyle: "normal",
-    color: "var(--text-muted)",
-  },
-  ".cm-snippetField": {
-    backgroundColor: "var(--accent-border)",
-    borderRadius: "2px",
-  },
-};
+function locateBlock(view: EditorView, block: EditableBlock): BlockAnchor {
+  const top = view.lineBlockAt(block.from).top + view.documentTop;
+  const bottom = view.lineBlockAt(Math.max(block.from, block.to - 1)).bottom + view.documentTop;
+  const content = view.contentDOM.getBoundingClientRect();
+  const style = getComputedStyle(view.contentDOM);
+  const left = content.left + (Number.parseFloat(style.paddingLeft) || 0);
+  const right = content.right - (Number.parseFloat(style.paddingRight) || 0);
+  return { top, bottom, left, width: Math.min(560, Math.max(300, right - left)) };
+}
 
 function readOnlyExtensions(readOnly: boolean) {
   if (!readOnly) return [];
@@ -149,6 +115,72 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
     resolveImageRef.current = resolveImage;
     titlesRef.current = titles;
     readOnlyRef.current = readOnly;
+    const [editing, setEditing] = useState<{ block: EditableBlock; anchor: BlockAnchor } | null>(null);
+
+    const editBlockRef = useRef((block: EditableBlock) => {
+      const view = viewRef.current;
+      if (!view || readOnlyRef.current) return;
+      view.requestMeasure({
+        read: () => locateBlock(view, block),
+        write: (anchor) => setEditing({ block, anchor }),
+      });
+    });
+
+    // Follow the block while the note scrolls under the open pop-up.
+    useEffect(() => {
+      const view = viewRef.current;
+      const block = editing?.block;
+      if (!view || !block) return;
+      const follow = () =>
+        view.requestMeasure({
+          key: "block-editor",
+          read: () => locateBlock(view, block),
+          write: (anchor) => setEditing((current) => (current?.block === block ? { block, anchor } : current)),
+        });
+      view.scrollDOM.addEventListener("scroll", follow);
+      window.addEventListener("resize", follow);
+      return () => {
+        view.scrollDOM.removeEventListener("scroll", follow);
+        window.removeEventListener("resize", follow);
+      };
+    }, [editing?.block]);
+
+    /** Write the pop-up's result back; `null` removes the block. */
+    const closeBlock = useCallback(
+      (markdown: string | null | undefined) => {
+        const view = viewRef.current;
+        const block = editing?.block;
+        setEditing(null);
+        if (!view || !block) return;
+        view.focus();
+        // Skip if the note changed under the pop-up, or nothing was edited.
+        if (markdown === undefined || view.state.sliceDoc(block.from, block.to) !== block.raw) return;
+        if (markdown === block.raw) return;
+        const doc = view.state.doc;
+        if (markdown === null) {
+          let { from, to } = block;
+          if (doc.sliceString(to, to + 1) === "\n") to += 1;
+          else if (from > 0 && doc.sliceString(from - 1, from) === "\n") from -= 1;
+          view.dispatch({
+            changes: { from, to },
+            selection: EditorSelection.cursor(from),
+            effects: showRendered.of(null),
+            userEvent: "delete.block",
+          });
+          return;
+        }
+        // Leave the cursor on the line after the block, so the block stays rendered.
+        const end = block.from + markdown.length;
+        const hasNextLine = block.to < doc.length;
+        view.dispatch({
+          changes: { from: block.from, to: block.to, insert: hasNextLine ? markdown : `${markdown}\n` },
+          selection: EditorSelection.cursor(end + 1),
+          effects: showRendered.of(null),
+          userEvent: "input.block",
+        });
+      },
+      [editing],
+    );
 
     useImperativeHandle(ref, () => ({
       insert(text: string, cursor?: number) {
@@ -198,6 +230,39 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
         });
         view.focus();
       },
+      colorSelection(color: TextColor | null, refocus = true) {
+        const view = viewRef.current;
+        if (!view || readOnlyRef.current) return;
+        const range = view.state.selection.main;
+        const line = view.state.doc.lineAt(range.from);
+        if (range.to > line.to) return;
+        const done = (from: number, to: number, insert: string, start: number, length: number) => {
+          view.dispatch({
+            changes: { from, to, insert },
+            selection: EditorSelection.range(start, start + length),
+          });
+          if (refocus) view.focus();
+        };
+        for (const match of line.text.matchAll(colorSpanPattern())) {
+          const from = line.from + (match.index ?? 0);
+          const to = from + match[0].length;
+          if (range.from < from || range.to > to) continue;
+          const inner = match[1] ?? "";
+          if (color) done(from, to, `[${inner}]{${colorAttribute(color)}}`, from + 1, inner.length);
+          else done(from, to, inner, from, inner.length);
+          return;
+        }
+        if (range.empty || !color) return;
+        const selected = view.state.doc.sliceString(range.from, range.to);
+        if (/[[\]\n]/.test(selected)) return;
+        done(
+          range.from,
+          range.to,
+          `[${selected}]{${colorAttribute(color)}}`,
+          range.from + 1,
+          selected.length,
+        );
+      },
       insertReference() {
         const view = viewRef.current;
         if (!view || readOnlyRef.current) return;
@@ -237,6 +302,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
             livePreview({
               onOpenTitle: (title) => onOpenTitleRef.current(title),
               resolveImage: (src) => resolveImageRef.current?.(src) ?? null,
+              onEditBlock: (block) => editBlockRef.current(block),
             }),
             EditorView.domEventHandlers({
               mousedown(event) {
@@ -245,7 +311,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
                 const wiki = target.closest(".cm-wiki");
                 if (!wiki) return false;
                 event.preventDefault();
-                onOpenTitleRef.current(wiki.textContent ?? "");
+                onOpenTitleRef.current(wiki.getAttribute("data-title") ?? wiki.textContent ?? "");
                 return true;
               },
               paste(event) {
@@ -318,6 +384,20 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
       });
     }, [value]);
 
-    return <div ref={hostRef} className="cm-host" />;
+    return (
+      <>
+        <div ref={hostRef} className="cm-host" />
+        {editing ? (
+          <BlockEditor
+            key={`${editing.block.from}:${editing.block.raw}`}
+            block={editing.block}
+            anchor={editing.anchor}
+            onApply={(markdown) => closeBlock(markdown)}
+            onCancel={() => closeBlock(undefined)}
+            onRemove={() => closeBlock(null)}
+          />
+        ) : null}
+      </>
+    );
   },
 );

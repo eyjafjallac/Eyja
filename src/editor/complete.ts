@@ -90,6 +90,16 @@ const displayMathCompletions: readonly Completion[] = mathCompletions.map((optio
   };
 });
 
+/** `\` commands in an editor that holds nothing but TeX, like the block editor. */
+export const texCompletion: CompletionSource = (context): CompletionResult | null => {
+  const match = context.matchBefore(/\\[A-Za-z]*$/);
+  if (!match) {
+    return context.explicit ? { from: context.pos, options: mathCompletions, validFor: /^$/ } : null;
+  }
+  if (context.state.sliceDoc(match.from - 1, match.from) === "\\") return null;
+  return { from: match.from, options: mathCompletions, validFor: /^\\[A-Za-z]*$/ };
+};
+
 export const mathCompletion: CompletionSource = (context): CompletionResult | null => {
   if (context.state.readOnly) return null;
   const text = context.state.doc.toString();

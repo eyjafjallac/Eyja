@@ -8,6 +8,8 @@ use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use crate::assets::{self, Asset};
 use crate::db::{assets_dir, now_ms, AppDb};
 use crate::documents;
+use crate::links;
+use crate::organize;
 use crate::settings;
 use crate::shell;
 
@@ -37,6 +39,7 @@ pub struct Memo {
     pub color: Option<String>,
     pub updated_at: i64,
     pub assets: Vec<Asset>,
+    pub tags: Vec<String>,
 }
 
 /// Set while the app quits, so closing every memo window does not forget which were open.
@@ -79,6 +82,7 @@ pub fn create_memo(db: State<AppDb>) -> Result<Memo, String> {
         color: note.color,
         updated_at: note.updated_at,
         assets: Vec::new(),
+        tags: Vec::new(),
     })
 }
 
@@ -332,8 +336,7 @@ fn discard_if_blank(conn: &Connection, assets_dir: &Path, id: &str) -> Result<bo
         )
         .map_err(|err| err.to_string())?;
     if versions == 0 {
-        conn.execute("DELETE FROM documents WHERE id = ?1", [id])
-            .map_err(|err| err.to_string())?;
+        documents::hard_delete(conn, id)?;
     } else {
         documents::soft_delete(conn, assets_dir, id)?;
     }
@@ -414,6 +417,7 @@ fn get(conn: &Connection, assets_dir: &Path, id: &str) -> Result<Option<Memo>, S
         return Ok(None);
     };
     let assets = assets::list(conn, assets_dir, &id)?;
+    let tags = organize::document_tags(conn, &id)?;
     Ok(Some(Memo {
         id,
         title,
@@ -421,6 +425,7 @@ fn get(conn: &Connection, assets_dir: &Path, id: &str) -> Result<Option<Memo>, S
         color,
         updated_at,
         assets,
+        tags,
     }))
 }
 
@@ -435,7 +440,7 @@ fn update_body(conn: &Connection, id: &str, body: &str) -> Result<(), String> {
     if changed == 0 {
         return Err("Memo not found".to_string());
     }
-    Ok(())
+    links::sync_document(conn, id)
 }
 
 fn set_color(conn: &Connection, id: &str, color: Option<&str>) -> Result<(), String> {
@@ -458,18 +463,7 @@ fn set_color(conn: &Connection, id: &str, color: Option<&str>) -> Result<(), Str
 }
 
 fn preview(body: &str) -> String {
-    let line = body
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty())
-        .unwrap_or("");
-    if line.starts_with("![") {
-        return "Image".to_string();
-    }
-    line.trim_start_matches(['#', '>', '-', '*', ' '])
-        .chars()
-        .take(PREVIEW_CHARS)
-        .collect()
+    documents::preview(body, PREVIEW_CHARS)
 }
 
 #[cfg(test)]
