@@ -1,3 +1,5 @@
+import { TextSettings } from "../editor/TextSettings";
+import { Icon, type IconName, SymButton } from "../memo/Icon";
 import { invoke } from "@tauri-apps/api/core";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { type KeyboardEvent, useEffect, useState } from "react";
@@ -11,6 +13,14 @@ type Settings = {
   memoSize: WindowSize;
   mainSize: WindowSize;
 };
+
+type Tab = "text" | "windows" | "memo";
+
+const TABS: { id: Tab; label: string; title: string; icon: IconName }[] = [
+  { id: "text", label: "Text & colors", title: "Text and appearance", icon: "text" },
+  { id: "windows", label: "Windows", title: "Window sizes", icon: "window" },
+  { id: "memo", label: "Quick memo", title: "Quick memo", icon: "memo" },
+];
 
 const DEFAULT_RETENTION_DAYS = 30;
 const SIZES: { id: WindowSize; label: string }[] = [
@@ -29,22 +39,19 @@ function SizePicker({
   onChange: (size: WindowSize) => void;
 }) {
   return (
-    <div className="settings-row">
-      <span>{label}</span>
-      <div className="settings-segments" role="radiogroup" aria-label={label}>
-        {SIZES.map((size) => (
-          <button
-            key={size.id}
-            type="button"
-            role="radio"
-            aria-checked={value === size.id}
-            className={value === size.id ? "active" : ""}
-            onClick={() => onChange(size.id)}
-          >
-            {size.label}
-          </button>
-        ))}
-      </div>
+    <div className="seg-control" role="radiogroup" aria-label={label}>
+      {SIZES.map((size) => (
+        <button
+          key={size.id}
+          type="button"
+          role="radio"
+          aria-checked={value === size.id}
+          className={value === size.id ? "seg-btn active" : "seg-btn"}
+          onClick={() => onChange(size.id)}
+        >
+          {size.label}
+        </button>
+      ))}
     </div>
   );
 }
@@ -72,6 +79,7 @@ function shortcutFromEvent(event: KeyboardEvent) {
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [settings, setSettings] = useState<Settings | null>(null);
+  const [tab, setTab] = useState<Tab>("text");
   const [recording, setRecording] = useState(false);
   const [days, setDays] = useState(String(DEFAULT_RETENTION_DAYS));
   const [error, setError] = useState("");
@@ -151,91 +159,139 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
   }
 
   const retentionOn = settings?.memoRetentionDays != null;
+  const active = TABS.find((item) => item.id === tab) ?? TABS[0];
 
   return (
     <div className="settings-backdrop" onMouseDown={onClose}>
       <section
-        className="settings-panel"
+        className="settings-modal"
         role="dialog"
         aria-label="Settings"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="settings-header">
-          <h2>Settings</h2>
-          <button type="button" onClick={onClose}>
-            Close
-          </button>
+        <nav className="settings-nav" aria-label="Settings categories">
+          <div className="settings-nav-title">Settings</div>
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={item.id === tab ? "settings-nav-btn active" : "settings-nav-btn"}
+              onClick={() => setTab(item.id)}
+            >
+              <Icon name={item.icon} size={15} />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="settings-content">
+          <header className="settings-content-head">
+            <strong>{active.title}</strong>
+            <SymButton icon="close" label="Close (Esc)" tipAlign="right" onClick={onClose} />
+          </header>
+          {error ? <p className="error-banner">{error}</p> : null}
+          <div className="settings-content-body">
+            {tab === "text" ? <TextSettings /> : null}
+            {tab === "windows" && settings ? (
+              <div className="setting-group">
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Editor and library window</span>
+                    <span className="setting-desc">Size of the main window</span>
+                  </div>
+                  <SizePicker
+                    label="Editor and library window"
+                    value={settings.mainSize}
+                    onChange={(size) => void saveSize("main", size)}
+                  />
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">New memo window</span>
+                    <span className="setting-desc">
+                      For new memo windows. A memo window you resize keeps its own size.
+                    </span>
+                  </div>
+                  <SizePicker
+                    label="New memo window"
+                    value={settings.memoSize}
+                    onChange={(size) => void saveSize("memo", size)}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {tab === "memo" && settings ? (
+              <div className="setting-group">
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Shortcut</span>
+                    {settings.memoShortcutActive ? (
+                      <span className="setting-desc">
+                        Opens a memo window, even while Eyja is in the background
+                      </span>
+                    ) : (
+                      <span className="setting-desc warn">
+                        This shortcut is not active. Another app may be using it; pick a different
+                        one.
+                      </span>
+                    )}
+                  </div>
+                  <div className="setting-controls">
+                    <button
+                      type="button"
+                      className={recording ? "shortcut-recorder recording" : "shortcut-recorder"}
+                      onClick={() => setRecording(true)}
+                      onBlur={() => setRecording(false)}
+                      onKeyDown={onShortcutKey}
+                    >
+                      {recording ? "Press keys..." : settings.memoShortcut}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => void saveShortcut("Ctrl+Shift+M")}
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info">
+                    <span className="setting-title">Delete old memos</span>
+                    <span className="setting-desc">
+                      Off by default: memos stay until you delete them. Deleting a memo removes its
+                      copied files and folders from disk; the text stays in history.
+                    </span>
+                  </div>
+                  <div className="setting-controls">
+                    <input
+                      type="checkbox"
+                      aria-label="Delete memos not edited for a number of days"
+                      checked={retentionOn}
+                      onChange={(event) =>
+                        void saveRetention(event.target.checked ? Number(days) : null)
+                      }
+                    />
+                    <span>After</span>
+                    <input
+                      className="num-input"
+                      type="number"
+                      min={1}
+                      value={days}
+                      aria-label="Days"
+                      onChange={(event) => setDays(event.target.value)}
+                      onBlur={() => {
+                        if (retentionOn && Number(days) !== settings.memoRetentionDays) {
+                          void saveRetention(Number(days));
+                        }
+                      }}
+                    />
+                    <span>days</span>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </div>
-        {error ? <p className="error settings-error">{error}</p> : null}
-        {settings ? (
-          <>
-            <h3>Window size</h3>
-            <SizePicker
-              label="Memo"
-              value={settings.memoSize}
-              onChange={(size) => void saveSize("memo", size)}
-            />
-            <p className="settings-hint">
-              For new memo windows. A memo window you resize keeps its own size.
-            </p>
-            <SizePicker
-              label="Editor and library"
-              value={settings.mainSize}
-              onChange={(size) => void saveSize("main", size)}
-            />
-            <h3>Memo</h3>
-            <div className="settings-row">
-              <span>Shortcut</span>
-              <button
-                type="button"
-                className={recording ? "settings-shortcut recording" : "settings-shortcut"}
-                onClick={() => setRecording(true)}
-                onBlur={() => setRecording(false)}
-                onKeyDown={onShortcutKey}
-              >
-                {recording ? "Press keys..." : settings.memoShortcut}
-              </button>
-              <button type="button" onClick={() => void saveShortcut("Ctrl+Shift+M")}>
-                Reset
-              </button>
-            </div>
-            {settings.memoShortcutActive ? null : (
-              <p className="settings-hint warn">
-                This shortcut is not active. Another app may be using it; pick a different one.
-              </p>
-            )}
-            <div className="settings-row">
-              <label className="settings-check">
-                <input
-                  type="checkbox"
-                  checked={retentionOn}
-                  onChange={(event) =>
-                    void saveRetention(event.target.checked ? Number(days) : null)
-                  }
-                />
-                Delete memos not edited for
-              </label>
-              <input
-                className="settings-days"
-                type="number"
-                min={1}
-                value={days}
-                aria-label="Days"
-                onChange={(event) => setDays(event.target.value)}
-                onBlur={() => {
-                  if (retentionOn && Number(days) !== settings.memoRetentionDays) {
-                    void saveRetention(Number(days));
-                  }
-                }}
-              />
-              <span>days</span>
-            </div>
-            <p className="settings-hint">
-              Off by default: memos stay until you delete them. Deleting a memo removes its copied
-              files and folders from disk; the text stays in history.
-            </p>
-          </>
-        ) : null}
       </section>
     </div>
   );

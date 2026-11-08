@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { LogicalSize } from "@tauri-apps/api/dpi";
+import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
@@ -13,12 +14,27 @@ import {
   withoutAssetLinks,
 } from "../assets";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../editor/MarkdownEditor";
-import { Icon, type IconName } from "./Icon";
+import { TextBubble } from "../editor/TextBubble";
+import { updatedAgo } from "../time";
+import { Icon, SymButton } from "./Icon";
 import "./memo.css";
 
 type MemoColor = "yellow" | "green" | "blue" | "pink" | "purple" | "gray";
 
 const COLORS: MemoColor[] = ["yellow", "green", "blue", "pink", "purple", "gray"];
+
+const COLOR_LABELS: Record<MemoColor | "default", string> = {
+  default: "Default",
+  yellow: "Yellow",
+  green: "Green",
+  blue: "Blue",
+  pink: "Pink",
+  purple: "Purple",
+  gray: "Gray",
+};
+
+/** Payload is the label of the memo window that was focused last. */
+const ACTIVE_MEMO_EVENT = "memo-active";
 
 type MemoSummary = {
   id: string;
@@ -66,43 +82,6 @@ function displayTitle(title: string) {
   return trimmed.length > 0 ? trimmed : "Untitled";
 }
 
-function formatTime(ms: number) {
-  return new Date(ms).toLocaleString("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function IconButton({
-  icon,
-  label,
-  active = false,
-  disabled = false,
-  onClick,
-}: {
-  icon: IconName;
-  label: string;
-  active?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={active ? "memo-icon active" : "memo-icon"}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onClick={onClick}
-    >
-      <Icon name={icon} />
-    </button>
-  );
-}
-
 export function MemoApp() {
   const [memos, setMemos] = useState<MemoSummary[]>([]);
   const [current, setCurrent] = useState<Memo | null>(null);
@@ -112,6 +91,8 @@ export function MemoApp() {
   const [collapsed, setCollapsed] = useState(false);
   const [pinned, setPinned] = useState(() => localStorage.getItem(pinnedKey) === "1");
   const [dragging, setDragging] = useState(false);
+  // Only the memo window focused last shows the text bubble.
+  const [lastActive, setLastActive] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const currentRef = useRef<Memo | null>(null);
@@ -212,10 +193,15 @@ export function MemoApp() {
     if (localStorage.getItem(pinnedKey) === "1") {
       void win.setAlwaysOnTop(true).catch(report);
     }
+    void win.isFocused().then((focused) => {
+      if (focused) void emit(ACTIVE_MEMO_EVENT, win.label);
+    });
     const unlisteners = [
       win.onFocusChanged(({ payload: focused }) => {
         void (focused ? reload() : flush()).catch(report);
+        if (focused) void emit(ACTIVE_MEMO_EVENT, win.label);
       }),
+      listen<string>(ACTIVE_MEMO_EVENT, (event) => setLastActive(event.payload === win.label)),
       win.onCloseRequested(async () => {
         try {
           await leave();
@@ -362,55 +348,89 @@ export function MemoApp() {
   // A blank memo is discarded when its window closes, so there is nothing to open.
   const blank = !current || (current.body.trim() === "" && current.assets.length === 0);
 
+  const swatches = [null, ...COLORS].map((color) => {
+    const key = color ?? "default";
+    const selected = (current?.color ?? null) === color;
+    return (
+      <button
+        key={key}
+        type="button"
+        role="radio"
+        aria-checked={selected}
+        className={`memo-swatch memo-${key}${selected ? " active" : ""}`}
+        data-tip={COLOR_LABELS[key]}
+        aria-label={COLOR_LABELS[key]}
+        disabled={!current}
+        onClick={() => run(() => setColor(color))}
+      />
+    );
+  });
+
   return (
     <div className={`memo memo-${current?.color ?? "default"}`}>
       <header className="memo-bar" data-tauri-drag-region>
-        <IconButton icon="list" label="All memos" active={listOpen} onClick={() => run(toggleList)} />
+        <SymButton
+          icon="list"
+          label="All memos"
+          size="sm"
+          tipAlign="left"
+          pressed={listOpen}
+          onClick={() => run(toggleList)}
+        />
         <span className="memo-heading" data-tauri-drag-region>
           {heading}
         </span>
-        <IconButton
-          icon="plus"
-          label="New memo window"
-          onClick={() => run(() => invoke("open_memo", { id: null }))}
-        />
+        <div
+          className="memo-swatches"
+          role="radiogroup"
+          aria-label="Memo color"
+          data-tauri-drag-region
+        >
+          {swatches}
+        </div>
         <div className="memo-palette-wrap">
-          <IconButton
+          <SymButton
             icon="color"
-            label="Color"
-            active={paletteOpen}
+            label="Memo color"
+            size="sm"
+            pressed={paletteOpen}
             disabled={!current}
             onClick={() => setPaletteOpen((value) => !value)}
           />
           {paletteOpen ? (
-            <div className="memo-palette">
-              {[null, ...COLORS].map((color) => (
-                <button
-                  key={color ?? "default"}
-                  type="button"
-                  className={`memo-swatch memo-${color ?? "default"}${
-                    (current?.color ?? null) === color ? " active" : ""
-                  }`}
-                  title={color ?? "Default"}
-                  aria-label={color ?? "Default"}
-                  onClick={() => run(() => setColor(color))}
-                />
-              ))}
+            <div className="memo-palette" role="radiogroup" aria-label="Memo color">
+              {swatches}
             </div>
           ) : null}
         </div>
-        <IconButton
+        <SymButton
+          icon="plus"
+          label="New memo window"
+          size="sm"
+          onClick={() => run(() => invoke("open_memo", { id: null }))}
+        />
+        <SymButton
           icon="pin"
-          label={pinned ? "Stop keeping on top" : "Keep on top"}
-          active={pinned}
+          label={pinned ? "Stop keeping on top" : "Keep window on top"}
+          size="sm"
+          pressed={pinned}
           onClick={() => run(togglePinned)}
         />
-        <IconButton
+        <SymButton
           icon={collapsed ? "expand" : "collapse"}
-          label={collapsed ? "Expand" : "Collapse"}
+          label={collapsed ? "Expand memo" : "Collapse to a bar"}
+          size="sm"
+          tipAlign="right"
           onClick={() => run(toggleCollapsed)}
         />
-        <IconButton icon="close" label="Close" onClick={() => run(() => getCurrentWindow().close())} />
+        <SymButton
+          icon="close"
+          label="Close memo"
+          size="sm"
+          danger
+          tipAlign="right"
+          onClick={() => run(() => getCurrentWindow().close())}
+        />
       </header>
       {collapsed ? null : listOpen ? (
         <ul className="memo-list">
@@ -418,88 +438,110 @@ export function MemoApp() {
             <li key={memo.id}>
               <button
                 type="button"
-                className={`memo-${memo.color ?? "default"}${memo.id === memoId ? " active" : ""}`}
+                className={`memo-list-item memo-${memo.color ?? "default"}${
+                  memo.id === memoId ? " active" : ""
+                }`}
                 onClick={() => run(() => openOther(memo.id))}
               >
                 <span className="memo-list-label">{memoLabel(memo.title, memo.preview)}</span>
-                <span className="memo-list-time">{formatTime(memo.updatedAt)}</span>
+                <span className="memo-list-time">
+                  {memo.id === memoId ? "This memo · " : ""}
+                  {updatedAgo(memo.updatedAt)}
+                </span>
               </button>
             </li>
           ))}
         </ul>
       ) : (
         <>
-          {error ? <p className="memo-error">{error}</p> : null}
+          {error ? <p className="error-banner">{error}</p> : null}
           <div className="memo-body">
             {current ? (
-              <MarkdownEditor
-                ref={editorRef}
-                value={current.body}
-                titles={notes.map((note) => displayTitle(note.title))}
-                placeholder="Jot something down. Drop files or paste images here."
-                resolveImage={resolveImage}
-                onChange={changeBody}
-                onOpenTitle={openTitle}
-                onPasteImages={(files) => run(() => pasteImages(files))}
-              />
+              <>
+                <MarkdownEditor
+                  ref={editorRef}
+                  value={current.body}
+                  titles={notes.map((note) => displayTitle(note.title))}
+                  placeholder="Jot something down. Drop files or paste images here."
+                  resolveImage={resolveImage}
+                  onChange={changeBody}
+                  onOpenTitle={openTitle}
+                  onPasteImages={(files) => run(() => pasteImages(files))}
+                />
+                <TextBubble
+                  compact
+                  shown={lastActive}
+                  onEnlarge={() => editorRef.current?.enlargeSelection()}
+                />
+              </>
             ) : null}
           </div>
           {current && current.assets.length > 0 ? (
             <ul className="memo-files">
               {current.assets.map((asset) => (
-                <li key={asset.id}>
+                <li key={asset.id} className="asset-chip">
                   <button
                     type="button"
-                    className="memo-file"
+                    className="asset-open"
                     title={asset.path}
                     onClick={() => run(() => invoke("open_asset", { id: asset.id }))}
                   >
-                    <Icon name={asset.isDir ? "folder" : "file"} />
-                    <span>{asset.name}</span>
+                    <Icon name={asset.isDir ? "folder" : "file"} size={14} />
+                    <strong>{asset.isDir ? `${asset.name}/` : asset.name}</strong>
                   </button>
                   <button
                     type="button"
-                    className="memo-file-remove"
-                    title={`Remove ${asset.name}`}
+                    className="asset-remove"
                     aria-label={`Remove ${asset.name}`}
                     onClick={() => run(() => removeAsset(asset))}
                   >
-                    <Icon name="close" />
+                    <Icon name="close" size={12} />
                   </button>
                 </li>
               ))}
             </ul>
           ) : null}
           <footer className="memo-foot">
-            <IconButton
+            <SymButton
               icon="file"
-              label="Attach files"
+              label="Attach files (copied into Eyja)"
+              tipPos="top"
+              tipAlign="left"
               disabled={!current || busy}
               onClick={() => run(() => pick(false))}
             />
-            <IconButton
+            <SymButton
               icon="folder"
-              label="Attach a folder"
+              label="Attach a folder (copied into Eyja)"
+              tipPos="top"
+              tipAlign="left"
               disabled={!current || busy}
               onClick={() => run(() => pick(true))}
             />
             <span className="memo-status">{busy ? "Copying..." : ""}</span>
-            <IconButton
+            <SymButton
               icon="open"
               label="Open in editor"
+              tipPos="top"
+              tipAlign="right"
               disabled={blank}
               onClick={() => run(openInEditor)}
             />
-            <IconButton
+            <SymButton
               icon="trash"
-              label="Delete memo"
+              label="Delete memo and copied files"
+              tipPos="top"
+              tipAlign="right"
+              danger
               disabled={!current}
               onClick={() => run(deleteMemo)}
             />
           </footer>
         </>
       )}
-      {dragging && !collapsed ? <div className="memo-drop">Drop to copy into this memo</div> : null}
+      {dragging && !collapsed ? (
+        <div className="memo-drop">Drop files or folders to copy them into this memo</div>
+      ) : null}
     </div>
   );
 }

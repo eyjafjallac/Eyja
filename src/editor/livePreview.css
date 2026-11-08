@@ -1,0 +1,290 @@
+.cm-host {
+  flex: 1;
+  min-height: 0;
+}
+
+.cm-editor {
+  height: 100%;
+  font-family: var(--editor-font-family, var(--font-sans));
+  font-size: var(--editor-font-size, 16px);
+  line-height: var(--editor-line-height, 1.6);
+  color: var(--text-primary);
+}
+
+.cm-h1 { font-size: 1.7em; font-weight: 700; letter-spacing: -0.015em; }
+.cm-h2 { font-size: 1.4em; font-weight: 700; letter-spacing: -0.01em; }
+.cm-h3 { font-size: 1.2em; font-weight: 650; }
+.cm-h4 { font-size: 1.1em; font-weight: 650; }
+.cm-h5, .cm-h6 { font-size: 1em; font-weight: 650; }
+
+.cm-quote-line {
+  box-shadow: inset 3px 0 0 var(--editor-quote, var(--border-strong));
+}
+
+.cm-task-done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.cm-link {
+  color: var(--editor-link, var(--accent));
+  cursor: pointer;
+}
+
+.cm-wiki {
+  padding: 1px 3px;
+  border-radius: 5px;
+  color: var(--editor-link, var(--accent));
+  background: color-mix(in srgb, var(--editor-link, var(--accent)) 10%, transparent);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.cm-inline-code {
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 0.88em;
+  background: var(--bg-subtle);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.cm-highlight {
+  background: var(--editor-highlight, #fde68a);
+  color: var(--editor-highlight-text, #1c1c1c);
+  border-radius: 3px;
+}
+
+.cm-em {
+  font-style: italic;
+}
+
+.cm-size-up {
+  font-size: 1.32em;
+  font-weight: 600;
+}
+
+.cm-strong {
+  font-weight: 700;
+}
+
+.cm-strike {
+  text-decoration: line-through;
+}
+
+.cm-md-mark {
+  color: var(--text-muted);
+  font-style: normal;
+  font-weight: 400;
+  text-decoration: none;
+}
+
+.cm-image img {
+  max-width: 100%;
+  margin: 8px 0;
+  border-radius: var(--radius-sm);
+}
+
+.cm-table {
+  margin: 14px 0;
+  border-collapse: collapse;
+  font-size: 0.92em;
+}
+
+.cm-table th,
+.cm-table td {
+  border: 1px solid var(--border-subtle);
+  padding: 7px 10px;
+  text-align: left;
+}
+
+.cm-table th {
+  background: var(--bg-app);
+  font-weight: 600;
+}
+
+div.cm-math-block {
+  margin: 12px 0;
+  padding: 20px 20px 16px;
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  text-align: center;
+}
+
+.cm-code-box {
+  position: relative;
+  margin: 12px 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-app);
+}
+
+.cm-code-lang {
+  position: absolute;
+  top: 8px;
+  left: 14px;
+  z-index: 1;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1;
+  user-select: none;
+}
+
+.cm-code-copy {
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.cm-code-copy:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.cm-code {
+  margin: 0;
+  padding: 12px 40px 12px 14px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-variant-ligatures: none;
+  font-size: 0.84em;
+  line-height: 1.55;
+}
+
+/* highlight.js ships a white background; light mode uses the box color instead. */
+[data-theme="light"] .cm-code.hljs {
+  background: transparent;
+}
+
+.cm-code-box.has-lang .cm-code {
+  padding-top: 30px;
+}
+
+/* Find and replace panel */
+.cm-host .cm-editor .cm-panels {
+  background: var(--bg-app);
+  color: var(--text-primary);
+}
+
+.cm-host .cm-editor .cm-panels-top {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cm-editor .cm-panel.cm-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+}
+
+.cm-editor .cm-panel.cm-search br {
+  order: 6;
+  flex: 0 0 100%;
+  width: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.cm-editor .cm-panel.cm-search input,
+.cm-editor .cm-panel.cm-search button,
+.cm-editor .cm-panel.cm-search label {
+  margin: 0;
+  font: inherit;
+}
+
+.cm-editor .cm-panel.cm-search input[name="search"] { order: 1; }
+.cm-editor .cm-panel.cm-search button[name="next"] { order: 2; }
+.cm-editor .cm-panel.cm-search button[name="prev"] { order: 3; }
+.cm-editor .cm-panel.cm-search button[name="select"] { order: 4; }
+.cm-editor .cm-panel.cm-search button[name="close"] { order: 5; }
+.cm-editor .cm-panel.cm-search input[name="replace"] { order: 7; }
+.cm-editor .cm-panel.cm-search button[name="replace"] { order: 8; }
+.cm-editor .cm-panel.cm-search button[name="replaceAll"] { order: 9; }
+.cm-editor .cm-panel.cm-search label { order: 10; }
+
+.cm-editor .cm-panel.cm-search input[name="search"],
+.cm-editor .cm-panel.cm-search input[name="replace"] {
+  width: 220px;
+  height: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  background: var(--bg-surface);
+  color: inherit;
+  outline: none;
+}
+
+.cm-editor .cm-panel.cm-search input[name="search"]:focus,
+.cm-editor .cm-panel.cm-search input[name="replace"]:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.cm-editor .cm-panel.cm-search button {
+  height: 28px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  background-image: none;
+  color: inherit;
+  padding: 0 10px;
+  box-shadow: var(--shadow-xs);
+  cursor: pointer;
+}
+
+.cm-editor .cm-panel.cm-search button:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}
+
+.cm-editor .cm-panel.cm-search button[name="close"] {
+  position: static;
+  top: auto;
+  right: auto;
+  width: 28px;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cm-editor .cm-panel.cm-search label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cm-searchMatch {
+  background: color-mix(in srgb, var(--editor-highlight, #fde68a) 45%, transparent);
+}
+
+.cm-searchMatch-selected {
+  background: color-mix(in srgb, var(--editor-highlight, #fde68a) 75%, transparent);
+}

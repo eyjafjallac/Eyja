@@ -4,25 +4,31 @@ mod documents;
 mod export;
 mod memo;
 mod settings;
+mod shell;
 mod versions;
 
 use std::sync::atomic::AtomicBool;
 
-use tauri::{Manager, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // Must come first: a second launch hands over to the copy already in the tray.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            shell::in_background(app, shell::show_main);
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        // Building a window inside an event handler can deadlock on Windows.
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move { memo::open_new(&app) });
+                        shell::in_background(app, |app| {
+                            memo::open_new(app);
+                            Ok(())
+                        });
                     }
                 })
                 .build(),
@@ -35,9 +41,11 @@ pub fn run() {
             let shortcut = settings::memo_shortcut(&connection)?;
             app.manage(db::AppDb(std::sync::Mutex::new(connection)));
             app.manage(memo::Exiting(AtomicBool::new(false)));
+            app.manage(shell::PendingDocument::default());
             if let Err(err) = app.global_shortcut().register(shortcut.as_str()) {
                 eprintln!("Could not register the memo shortcut {shortcut}: {err}");
             }
+            shell::setup_tray(app)?;
             let handle = app.handle();
             if let Err(err) = settings::apply_main_size(handle) {
                 eprintln!("Could not size the main window: {err}");
@@ -54,13 +62,8 @@ pub fn run() {
             if !matches!(event, WindowEvent::Destroyed) {
                 return;
             }
-            let app = window.app_handle();
-            if window.label() == settings::MAIN_LABEL {
-                // Memo windows would otherwise keep the app alive after the main window is gone.
-                memo::on_app_exit(app);
-                app.exit(0);
-            } else if let Some(id) = memo::memo_id(window.label()) {
-                memo::on_window_closed(app, id);
+            if let Some(id) = memo::memo_id(window.label()) {
+                memo::on_window_closed(window.app_handle(), id);
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -92,7 +95,19 @@ pub fn run() {
             settings::set_memo_shortcut,
             settings::set_memo_retention,
             settings::set_window_size,
+            shell::take_pending_document,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let RunEvent::ExitRequested { code, api, .. } = event {
+                // The last window closing is not a quit: Eyja stays in the tray.
+                // "Quit Eyja" in the tray, and Cmd+Q while a window is open, do quit.
+                if code.is_none() && app.webview_windows().is_empty() {
+                    api.prevent_exit();
+                } else {
+                    memo::on_app_exit(app);
+                }
+            }
+        });
 }

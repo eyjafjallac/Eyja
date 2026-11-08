@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eyja — Phase 1: Floating Quick Memo Windows</title>
+  <link rel="stylesheet" href="./design-system.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <style>
+    .desktop-stage {
+      min-height: 100vh;
+      padding: 28px 36px;
+      background:
+        radial-gradient(circle at 18% 20%, rgba(47, 95, 227, 0.12), transparent 45%),
+        radial-gradient(circle at 82% 75%, rgba(234, 179, 8, 0.12), transparent 45%),
+        var(--bg-app);
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .stage-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .memo-gallery {
+      display: grid;
+      grid-template-columns: 400px 360px 340px;
+      gap: 24px;
+      align-items: start;
+    }
+
+    /* Floating Memo Window Card */
+    .memo-window {
+      position: relative;
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+      overflow: visible;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--memo-yellow-border);
+      background: var(--memo-yellow-bg);
+      --memo-font-size: 14px;
+    }
+
+    .memo-window.blue {
+      background: var(--memo-blue-bg);
+      border-color: var(--memo-blue-border);
+    }
+
+    .memo-window.purple {
+      background: var(--memo-purple-bg);
+      border-color: var(--memo-purple-border);
+    }
+
+    .memo-titlebar {
+      height: 40px;
+      padding: 0 8px;
+      border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+      background: var(--memo-yellow-bar);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      user-select: none;
+    }
+
+    .memo-window.blue .memo-titlebar { background: var(--memo-blue-bar); }
+    .memo-window.purple .memo-titlebar { background: var(--memo-purple-bar); }
+
+    .swatch-row {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .swatch {
+      width: 13px;
+      height: 13px;
+      border-radius: 50%;
+      border: 1px solid rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+    }
+
+    .memo-content {
+      padding: 14px 16px 56px;
+      font-size: var(--memo-font-size);
+      line-height: 1.6;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      position: relative;
+    }
+
+    .asset-tray {
+      padding: 10px 12px;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .asset-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.65);
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      font-size: 12px;
+      color: #18181b;
+    }
+
+    .memo-footer {
+      padding: 6px 10px;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .dropzone-overlay {
+      margin: 10px 14px 14px;
+      padding: 18px;
+      border-radius: var(--radius-md);
+      border: 2px dashed var(--accent);
+      background: var(--accent-soft);
+      color: var(--accent-text);
+      text-align: center;
+      font-weight: 500;
+      font-size: 12.5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="desktop-stage">
+    <header class="stage-header">
+      <div>
+        <span class="tag-pill accent">Phase 1 · memo.md</span>
+        <h1 style="margin:6px 0 2px; font-size:22px;">Floating Quick Memo (`Ctrl + Shift + M`)</h1>
+        <p style="margin:0; color:var(--text-secondary); font-size:13px;">
+          Symbol-only top bar with hover tooltips · Bottom glass bubble for text size · Deep-copies dropped files &amp; folders into <code>assets/</code>
+        </p>
+      </div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn" onclick="toggleTheme()">◐ Theme</button>
+        <a class="btn" href="./index.html" style="text-decoration:none;">← All Blueprints</a>
+        <a class="btn btn-primary" href="./phase1-editor.html" style="text-decoration:none;">Open Main Editor →</a>
+      </div>
+    </header>
+
+    <div class="memo-gallery">
+      <!-- 1. Active Yellow Memo with Symbol Topbar + Bottom Glass Bubble (Only on Last Active Memo) -->
+      <section id="memo-card-1" class="memo-window is-active-memo" onclick="setActiveMemo('memo-card-1')">
+        <div class="memo-titlebar">
+          <div style="display:flex; align-items:center; gap:4px;">
+            <button class="sym-btn" style="width:26px; height:26px;" data-tip="All Memos List">
+              <svg viewBox="0 0 20 20"><path d="M4 5.5h12M4 10h12M4 14.5h12"/></svg>
+            </button>
+            <strong style="font-size:12.5px;">Eigenvalue bounds</strong>
+          </div>
+
+          <div class="swatch-row">
+            <span class="swatch" data-tip="Yellow" style="background:#fde68a; outline:2px solid #2f5fe3;"></span>
+            <span class="swatch" data-tip="Green" style="background:#bbf7d0;"></span>
+            <span class="swatch" data-tip="Blue" style="background:#bfdbfe;"></span>
+            <span class="swatch" data-tip="Pink" style="background:#fbcfe8;"></span>
+            <span class="swatch" data-tip="Purple" style="background:#ddd6fe;"></span>
+          </div>
+
+          <div style="display:flex; align-items:center; gap:2px;">
+            <button class="sym-btn" style="width:26px; height:26px;" data-tip="New Memo Window">
+              <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+            </button>
+            <button class="sym-btn active" style="width:26px; height:26px;" data-tip="Keep Window on Top">
+              <svg viewBox="0 0 20 20"><path d="M7.5 3.5h5M8.5 3.5v4.5l-3 3.5h9l-3-3.5V3.5M10 11.5v5"/></svg>
+            </button>
+            <button class="sym-btn" style="width:26px; height:26px;" data-tip="Collapse to 40px Bar">
+              <svg viewBox="0 0 20 20"><path d="M5.5 12.5 10 8l4.5 4.5"/></svg>
+            </button>
+            <button class="sym-btn danger" style="width:26px; height:26px;" data-tip="Close Memo" data-tip-align="right">
+              <svg viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="memo-content">
+          <div style="display:flex; gap:5px;">
+            <span class="tag-pill" style="background:rgba(0,0,0,0.07); color:inherit;">#spectral-theory</span>
+            <span class="tag-pill" style="background:rgba(0,0,0,0.07); color:inherit;">#seminar</span>
+          </div>
+          <div>
+            Quick bound from lecture: for any connected graph \(G\), the <span id="memo-selected-text" style="font-weight:600; color:#b45309; padding:0 2px; border-radius:3px;">spectral gap</span> satisfies:
+          </div>
+          <div style="padding:10px; border-radius:8px; background:rgba(255,255,255,0.55); text-align:center;">
+            \(\frac{h(G)^2}{2} \le \lambda_1 \le 2h(G)\)
+          </div>
+          <div style="font-size:12.5px; opacity:0.85;">
+            See also <span style="text-decoration:underline; cursor:pointer;">[[Cheeger Inequality Proof]]</span>
+          </div>
+
+          <!-- Floating Glass Bubble at bottom of the Last Active Memo -->
+          <div class="glass-bubble-wrap" style="bottom:10px;">
+            <div class="glass-bubble" style="height:32px; padding:0 6px;">
+              <button class="glass-btn" style="height:22px; min-width:22px;" data-tip-pos="top" data-tip="Smaller text (A−)" onclick="stepMemoFont('memo-card-1', -1)">A−</button>
+              <span class="glass-readout" data-tip-pos="top" data-tip="Reset text size (14px)" onclick="stepMemoFont('memo-card-1', 0)">14px</span>
+              <button class="glass-btn" style="height:22px; min-width:22px;" data-tip-pos="top" data-tip="Larger text (A+)" onclick="stepMemoFont('memo-card-1', 1)">A+</button>
+              <div class="glass-divider"></div>
+              <button class="glass-btn" style="height:22px; min-width:22px;" data-tip-pos="top" data-tip="Enlarge selected words">
+                <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3.5 15.5 8 4.5l4.5 11M5.2 12h5.6M15.5 13.5V5.5M13 8l2.5-2.5L18 8"/></svg>
+              </button>
+              <div class="glass-divider"></div>
+              <div class="color-swatches-inline">
+                <button type="button" class="text-color-dot" style="width:13px; height:13px; background:var(--text-primary);" data-tip-pos="top" data-tip="Default text color" onclick="colorMemoText('memo-selected-text', 'inherit', this)"></button>
+                <button type="button" class="text-color-dot active" style="width:13px; height:13px; background:#d97706;" data-tip-pos="top" data-tip="Amber text" onclick="colorMemoText('memo-selected-text', '#d97706', this)"></button>
+                <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#dc2626;" data-tip-pos="top" data-tip="Coral red text" onclick="colorMemoText('memo-selected-text', '#dc2626', this)"></button>
+                <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#2563eb;" data-tip-pos="top" data-tip="Blue text" onclick="colorMemoText('memo-selected-text', '#2563eb', this)"></button>
+                <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#7c3aed;" data-tip-pos="top" data-tip="Purple text" onclick="colorMemoText('memo-selected-text', '#7c3aed', this)"></button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="asset-tray">
+          <div class="asset-chip">📁 <strong>sim-results/</strong> <span style="opacity:0.6">(copied dir)</span> ✕</div>
+          <div class="asset-chip">📄 <strong>slides-p14.pdf</strong> ✕</div>
+          <div class="asset-chip">🖼 <strong>spectrum.png</strong> ✕</div>
+        </div>
+
+        <div class="memo-footer">
+          <div style="display:flex; gap:2px;">
+            <button class="sym-btn" style="width:28px; height:28px;" data-tip-pos="top" data-tip="Attach Files (copied into assets/)">
+              <svg viewBox="0 0 20 20"><path d="M6 3.5h5l3.5 3.5v9.5H6zM11 3.5V7h3.5"/></svg>
+            </button>
+            <button class="sym-btn" style="width:28px; height:28px;" data-tip-pos="top" data-tip="Attach Folder (copied into assets/)">
+              <svg viewBox="0 0 20 20"><path d="M3.5 6h5l1.5 1.5h6.5v8h-13z"/></svg>
+            </button>
+          </div>
+          <div style="display:flex; gap:2px;">
+            <a class="sym-btn" href="./phase1-editor.html" style="width:28px; height:28px;" data-tip-pos="top" data-tip="Open in Main Editor">
+              <svg viewBox="0 0 20 20"><path d="M11.5 4h4.5v4.5M16 4l-6.5 6.5M14 11.5V16H4V6h4.5"/></svg>
+            </a>
+            <button class="sym-btn danger" style="width:28px; height:28px;" data-tip-pos="top" data-tip="Delete Memo & Copied Assets">
+              <svg viewBox="0 0 20 20"><path d="M4.5 6h11M8 6V4h4v2M6 6l.8 10h6.4L14 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Collapsed 40px Bar + Drag-and-Drop Vault State -->
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <section class="memo-window purple">
+          <div class="memo-titlebar" style="border-radius:calc(var(--radius-lg) - 1px);">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span>📌</span>
+              <strong style="font-size:12.5px;">Collapsed Memo (40px strip)</strong>
+            </div>
+            <div style="display:flex; align-items:center; gap:4px;">
+              <span class="kbd" style="font-size:10px;">Always on top</span>
+              <button class="sym-btn" style="width:26px; height:26px;" data-tip="Expand Memo Window">
+                <svg viewBox="0 0 20 20"><path d="M5.5 8 10 12.5 14.5 8"/></svg>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section id="memo-card-2" class="memo-window blue" onclick="setActiveMemo('memo-card-2')">
+          <div class="memo-titlebar">
+            <strong style="font-size:12.5px;">ArXiv figures drop</strong>
+            <span style="font-size:11px; opacity:0.75;">Click memo to focus bubble</span>
+          </div>
+          <div class="memo-content">
+            <div>Drop any file or folder below. Click this Memo window to make it the <span id="memo-selected-text-2" style="font-weight:600; color:#2563eb;">last active memo</span> and bring the glass bubble here.</div>
+            <div class="glass-bubble-wrap" style="bottom:8px;">
+              <div class="glass-bubble" style="height:32px; padding:0 6px;">
+                <button class="glass-btn" style="height:22px; min-width:22px;" data-tip-pos="top" data-tip="Smaller text (A−)" onclick="stepMemoFont('memo-card-2', -1)">A−</button>
+                <span class="glass-readout" data-tip-pos="top" data-tip="Reset text size (14px)" onclick="stepMemoFont('memo-card-2', 0)">14px</span>
+                <button class="glass-btn" style="height:22px; min-width:22px;" data-tip-pos="top" data-tip="Larger text (A+)" onclick="stepMemoFont('memo-card-2', 1)">A+</button>
+                <div class="glass-divider"></div>
+                <div class="color-swatches-inline">
+                  <button type="button" class="text-color-dot" style="width:13px; height:13px; background:var(--text-primary);" data-tip-pos="top" data-tip="Default text color" onclick="colorMemoText('memo-selected-text-2', 'inherit', this)"></button>
+                  <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#d97706;" data-tip-pos="top" data-tip="Amber text" onclick="colorMemoText('memo-selected-text-2', '#d97706', this)"></button>
+                  <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#dc2626;" data-tip-pos="top" data-tip="Coral red text" onclick="colorMemoText('memo-selected-text-2', '#dc2626', this)"></button>
+                  <button type="button" class="text-color-dot active" style="width:13px; height:13px; background:#2563eb;" data-tip-pos="top" data-tip="Blue text" onclick="colorMemoText('memo-selected-text-2', '#2563eb', this)"></button>
+                  <button type="button" class="text-color-dot" style="width:13px; height:13px; background:#7c3aed;" data-tip-pos="top" data-tip="Purple text" onclick="colorMemoText('memo-selected-text-2', '#7c3aed', this)"></button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="dropzone-overlay">
+            ⤓ Drop files or folders to deep-copy into this Memo
+          </div>
+        </section>
+      </div>
+
+      <!-- 3. All Memos Switcher List -->
+      <section class="memo-window" style="background:var(--bg-surface); border-color:var(--border-strong);">
+        <div class="memo-titlebar" style="background:var(--bg-sidebar);">
+          <strong style="font-size:12.5px;">☰ All Memos Drawer</strong>
+          <button class="sym-btn" style="width:26px; height:26px;" data-tip="New Memo Window">
+            <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+          </button>
+        </div>
+        <div style="padding:10px; display:flex; flex-direction:column; gap:8px;">
+          <div style="padding:9px 11px; border-radius:8px; border-left:4px solid #f59e0b; background:var(--bg-app);">
+            <div style="font-weight:600; font-size:13px;">Eigenvalue bounds</div>
+            <div style="font-size:11.5px; color:var(--text-muted);">3 assets · Updated 2m ago</div>
+          </div>
+          <div style="padding:9px 11px; border-radius:8px; border-left:4px solid #3b82f6; background:var(--bg-app);">
+            <div style="font-weight:600; font-size:13px;">ArXiv figures drop</div>
+            <div style="font-size:11.5px; color:var(--text-muted);">Folder copied · Updated 1h ago</div>
+          </div>
+          <div style="padding:9px 11px; border-radius:8px; border-left:4px solid #a855f7; background:var(--bg-app);">
+            <div style="font-weight:600; font-size:13px;">Collapsed Memo (40px strip)</div>
+            <div style="font-size:11.5px; color:var(--text-muted);">Pinned · Yesterday</div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body);"></script>
+  <script>
+    function toggleTheme() {
+      const root = document.documentElement;
+      root.setAttribute("data-theme", root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    }
+
+    function setActiveMemo(cardId) {
+      document.querySelectorAll(".memo-window").forEach((el) => {
+        el.classList.toggle("is-active-memo", el.id === cardId);
+      });
+    }
+
+    function stepMemoFont(cardId, delta) {
+      const card = document.getElementById(cardId);
+      const current = parseInt(getComputedStyle(card).getPropertyValue("--memo-font-size"), 10) || 14;
+      const next = delta === 0 ? 14 : Math.min(22, Math.max(11, current + delta));
+      card.style.setProperty("--memo-font-size", next + "px");
+      card.querySelector(".glass-readout").textContent = next + "px";
+    }
+
+    function colorMemoText(spanId, color, btn) {
+      const span = document.getElementById(spanId);
+      if (span) span.style.color = color;
+      const group = btn.closest(".color-swatches-inline");
+      if (group) {
+        group.querySelectorAll(".text-color-dot").forEach((d) => d.classList.remove("active"));
+        btn.classList.add("active");
+      }
+    }
+  </script>
+</body>
+</html>

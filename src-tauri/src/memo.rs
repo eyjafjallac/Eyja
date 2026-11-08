@@ -3,12 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 use crate::assets::{self, Asset};
 use crate::db::{assets_dir, now_ms, AppDb};
 use crate::documents;
-use crate::settings::{self, MAIN_LABEL};
+use crate::settings;
+use crate::shell;
 
 /// Each memo window is labelled `memo-<document id>`.
 pub const LABEL_PREFIX: &str = "memo-";
@@ -115,14 +116,7 @@ pub async fn open_memo(app: AppHandle, id: Option<String>) -> Result<String, Str
 
 #[tauri::command]
 pub async fn open_in_editor(app: AppHandle, id: String) -> Result<(), String> {
-    let main = app
-        .get_webview_window(MAIN_LABEL)
-        .ok_or_else(|| "The main window is closed.".to_string())?;
-    let _ = main.unminimize();
-    main.show().map_err(|err| err.to_string())?;
-    main.set_focus().map_err(|err| err.to_string())?;
-    app.emit_to(MAIN_LABEL, "open-document", id)
-        .map_err(|err| err.to_string())
+    shell::open_document(&app, id)
 }
 
 pub fn memo_id(label: &str) -> Option<&str> {
@@ -177,7 +171,7 @@ pub fn on_window_closed(app: &AppHandle, id: &str) {
     save_open_windows(app, &[id.to_string()]);
 }
 
-/// Called when the main window closes, just before the app quits.
+/// Called just before the app quits, while the memo windows are still open.
 pub fn on_app_exit(app: &AppHandle) {
     app.state::<Exiting>().0.store(true, Ordering::SeqCst);
     let open = open_ids(app);

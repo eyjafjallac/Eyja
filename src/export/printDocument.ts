@@ -2,6 +2,7 @@ import hljs from "highlight.js/lib/common";
 import hljsCss from "highlight.js/styles/github.css?raw";
 import katex from "katex";
 import katexCss from "katex/dist/katex.min.css?raw";
+import { DEFAULT_HIGHLIGHT, inkOn, readEditorType } from "../editor/fontSize";
 import { Marked } from "marked";
 
 export type PaperSize = "A4" | "Letter" | "A5";
@@ -75,7 +76,8 @@ function embedImages(body: string, images: ExportImage[]) {
 function renderBody(source: string) {
   const fenced = shield(source, (text) => fenceSlots(text));
   const inlined = shield(fenced.text, (text) => inlineSlots(text));
-  const maths = replaceMath(inlined.text);
+  const sized = enlargeSpans(highlightSpans(inlined.text));
+  const maths = replaceMath(sized);
   const markdown = restore(
     restore(maths.text, "EYJASLOT", inlined.slots),
     "EYJAFENCE",
@@ -96,6 +98,18 @@ function restoreMath(html: string, display: string[], inline: string[]) {
     next = next.split(`EYJAMATHI${index}END`).join(math);
   });
   return next;
+}
+
+function highlightSpans(text: string) {
+  return text.replace(/==([^=\n]+)==/g, (_match, inner: string) => {
+    return `<mark>${escapeHtml(inner)}</mark>`;
+  });
+}
+
+function enlargeSpans(text: string) {
+  return text.replace(/\+\+([^\n+]+)\+\+/g, (_match, inner: string) => {
+    return `<span class="size-up">${escapeHtml(inner)}</span>`;
+  });
 }
 
 function replaceMath(text: string) {
@@ -260,6 +274,9 @@ function bufferToBase64(buffer: ArrayBuffer) {
 }
 
 function pageCss() {
+  const colors = readEditorType().colors;
+  const highlight = colors.highlight || DEFAULT_HIGHLIGHT;
+  const link = colors.link || "#2563eb";
   return `
     html, body { margin: 0; padding: 0; color: #1c1c1c; background: white; }
     .page {
@@ -289,6 +306,9 @@ function pageCss() {
       font: 10pt "Segoe UI", sans-serif;
     }
     .body { font: 11pt "Segoe UI", sans-serif; line-height: 1.5; }
+    .body .size-up { font-size: 1.35em; }
+    .body mark { background: ${highlight}; color: ${inkOn(highlight)}; }
+    .body a { color: ${link}; }
     .body > * { margin: 0 0 3mm; }
     .body h1 { font-size: 18pt; }
     .body h2 { font-size: 15pt; }

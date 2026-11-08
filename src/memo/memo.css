@@ -1,14 +1,61 @@
-.memo-default { --memo-bg: #ffffff; --memo-bar: #f4f4f5; }
-.memo-yellow { --memo-bg: #fef9c3; --memo-bar: #fde68a; }
-.memo-green { --memo-bg: #dcfce7; --memo-bar: #bbf7d0; }
-.memo-blue { --memo-bg: #dbeafe; --memo-bar: #bfdbfe; }
-.memo-pink { --memo-bg: #fce7f3; --memo-bar: #fbcfe8; }
-.memo-purple { --memo-bg: #ede9fe; --memo-bar: #ddd6fe; }
-.memo-gray { --memo-bg: #f4f4f5; --memo-bar: #e4e4e7; }
+.memo-default {
+  --memo-bg: var(--bg-surface);
+  --memo-bar: var(--bg-sidebar);
+  --memo-border: var(--border-strong);
+  --memo-dot: var(--bg-surface);
+}
+
+.memo-yellow {
+  --memo-bg: var(--memo-yellow-bg);
+  --memo-bar: var(--memo-yellow-bar);
+  --memo-border: var(--memo-yellow-border);
+  --memo-dot: #fde68a;
+  --memo-accent: #f59e0b;
+}
+
+.memo-green {
+  --memo-bg: var(--memo-green-bg);
+  --memo-bar: var(--memo-green-bar);
+  --memo-border: var(--memo-green-border);
+  --memo-dot: #bbf7d0;
+  --memo-accent: #22c55e;
+}
+
+.memo-blue {
+  --memo-bg: var(--memo-blue-bg);
+  --memo-bar: var(--memo-blue-bar);
+  --memo-border: var(--memo-blue-border);
+  --memo-dot: #bfdbfe;
+  --memo-accent: #3b82f6;
+}
+
+.memo-pink {
+  --memo-bg: var(--memo-pink-bg);
+  --memo-bar: var(--memo-pink-bar);
+  --memo-border: var(--memo-pink-border);
+  --memo-dot: #fbcfe8;
+  --memo-accent: #ec4899;
+}
+
+.memo-purple {
+  --memo-bg: var(--memo-purple-bg);
+  --memo-bar: var(--memo-purple-bar);
+  --memo-border: var(--memo-purple-border);
+  --memo-dot: #ddd6fe;
+  --memo-accent: #a855f7;
+}
+
+.memo-gray {
+  --memo-bg: var(--memo-gray-bg);
+  --memo-bar: var(--memo-gray-bar);
+  --memo-border: var(--memo-gray-border);
+  --memo-dot: #d6d3cd;
+  --memo-accent: #a8a29e;
+}
 
 .memo {
-  --memo-line: rgba(0, 0, 0, 0.1);
-  --memo-hover: rgba(0, 0, 0, 0.07);
+  --memo-line: rgba(0, 0, 0, 0.08);
+  --memo-chip: rgba(255, 255, 255, 0.65);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -18,107 +65,139 @@
   font-size: 14px;
 }
 
+[data-theme="dark"] .memo {
+  --memo-line: rgba(255, 255, 255, 0.08);
+  --memo-chip: rgba(255, 255, 255, 0.06);
+}
+
+/* Window outline drawn on top, so it does not change the 40px bar of a collapsed memo. */
+.memo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  border: 1px solid var(--memo-border);
+  pointer-events: none;
+}
+
 .memo-bar {
+  position: relative;
+  z-index: 5;
   flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
   height: 40px;
-  padding: 0 6px;
+  padding: 0 7px;
   background: var(--memo-bar);
   user-select: none;
+}
+
+.memo-bar .sym-btn:not(.active) {
+  color: inherit;
+  opacity: 0.8;
+}
+
+.memo-bar .sym-btn:hover:not(:disabled) {
+  opacity: 1;
 }
 
 .memo-heading {
   flex: 1;
   min-width: 0;
-  padding: 0 6px;
+  padding: 0 4px;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 600;
   cursor: default;
 }
 
-.memo-icon {
+.memo-swatches {
   flex: none;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
+  gap: 5px;
+  margin: 0 6px 0 2px;
+}
+
+.memo-swatch {
+  flex: none;
+  width: 13px;
+  height: 13px;
   padding: 0;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 50%;
+  background: var(--memo-dot);
   cursor: pointer;
+  transition: transform 0.12s ease;
 }
 
-.memo-icon:hover:not(:disabled),
-.memo-icon.active {
-  background: var(--memo-hover);
+.memo-swatch:hover:not(:disabled) {
+  transform: scale(1.18);
 }
 
-.memo-icon:disabled {
-  opacity: 0.4;
+.memo-swatch.active {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.memo-swatch:disabled {
   cursor: default;
 }
 
-.memo-svg {
-  display: block;
+[data-theme="dark"] .memo-swatch {
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .memo-palette-wrap {
   position: relative;
+  display: none;
 }
 
 .memo-palette {
   position: absolute;
   top: calc(100% + 6px);
   right: -60px;
-  z-index: 3;
-  display: grid;
-  grid-template-columns: repeat(7, 22px);
-  gap: 6px;
-  padding: 8px;
-  background: #fff;
-  border: 1px solid #d4d4d8;
-  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  padding: 9px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
 }
 
-.memo-swatch {
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-  border-radius: 50%;
-  background: var(--memo-bar);
-  cursor: pointer;
-}
+/* Narrow memo windows have no room for the swatch row; one color button opens it instead. */
+@media (max-width: 360px) {
+  .memo-swatches {
+    display: none;
+  }
 
-.memo-swatch.active {
-  outline: 2px solid #2563eb;
-  outline-offset: 1px;
+  .memo-palette-wrap {
+    display: block;
+  }
 }
 
 .memo-body {
+  --cm-padding: 12px 10px 52px;
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.memo-body .cm-content {
-  padding: 10px 14px 24px;
+.memo-body .glass-bubble-wrap {
+  bottom: 10px;
 }
 
-.memo-error {
-  margin: 8px 12px 0;
-  color: #b91c1c;
-  font-size: 13px;
+.memo .error-banner {
+  border-bottom-color: var(--memo-line);
 }
 
+/* Copied files and folders */
 .memo-files {
   flex: none;
   display: flex;
@@ -127,49 +206,59 @@
   max-height: 96px;
   overflow: auto;
   margin: 0;
-  padding: 8px 10px;
+  padding: 10px 12px;
   list-style: none;
   border-top: 1px solid var(--memo-line);
 }
 
-.memo-files li {
-  display: flex;
+.asset-chip {
+  display: inline-flex;
   align-items: center;
   max-width: 100%;
   border-radius: 6px;
-  background: var(--memo-hover);
-}
-
-.memo-file,
-.memo-file-remove {
-  border: 0;
-  background: transparent;
-  cursor: pointer;
-}
-
-.memo-file {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  padding: 3px 4px 3px 8px;
+  background: var(--memo-chip);
+  border: 1px solid var(--memo-line);
   font-size: 12px;
 }
 
-.memo-file span {
+.asset-open,
+.asset-remove {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.asset-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 4px 4px 8px;
+  font-size: 12px;
+}
+
+.asset-open svg {
+  flex: none;
+  opacity: 0.7;
+}
+
+.asset-open strong {
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-weight: 600;
 }
 
-.memo-file-remove {
+.asset-remove {
   display: inline-flex;
-  padding: 3px 6px 3px 2px;
-  opacity: 0.6;
+  padding: 4px 7px 4px 3px;
+  opacity: 0.5;
 }
 
-.memo-file-remove:hover {
+.asset-remove:hover {
   opacity: 1;
+  color: var(--status-danger);
 }
 
 .memo-foot {
@@ -177,48 +266,76 @@
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border-top: 1px solid var(--memo-line);
+}
+
+.memo-foot .sym-btn {
+  width: 28px;
+  height: 28px;
+}
+
+.memo-foot .sym-btn:not(.active) {
+  color: inherit;
+  opacity: 0.75;
+}
+
+.memo-foot .sym-btn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.memo-bar .sym-btn:disabled,
+.memo-foot .sym-btn:disabled {
+  opacity: 0.35;
 }
 
 .memo-status {
   flex: 1;
   padding: 0 6px;
-  color: #71717a;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
+/* All memos */
 .memo-list {
   flex: 1;
   min-height: 0;
   overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   margin: 0;
-  padding: 8px;
+  padding: 10px;
   list-style: none;
+  background: var(--bg-surface);
 }
 
-.memo-list li + li {
-  margin-top: 6px;
-}
-
-.memo-list button {
+.memo-list-item {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  width: 100%;
-  padding: 8px 10px;
+  gap: 1px;
+  padding: 9px 11px;
+  border: 0;
+  border-left: 4px solid var(--memo-accent);
+  border-radius: 8px;
+  background: var(--bg-app);
   text-align: left;
-  border: 1px solid var(--memo-line);
-  border-left: 4px solid var(--memo-bar);
-  border-radius: 6px;
-  background: var(--memo-bg);
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
-.memo-list button.active {
-  outline: 2px solid #2563eb;
-  outline-offset: -1px;
+.memo-list-item.memo-default {
+  border-left-color: var(--border-strong);
+}
+
+.memo-list-item:hover {
+  background: var(--bg-hover);
+}
+
+.memo-list-item.active {
+  box-shadow: 0 0 0 2px var(--accent-soft), inset 0 0 0 1px var(--accent-border);
 }
 
 .memo-list-label {
@@ -226,57 +343,30 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .memo-list-time {
-  color: #71717a;
-  font-size: 12px;
+  color: var(--text-muted);
+  font-size: 11.5px;
 }
 
 .memo-drop {
   position: absolute;
   inset: 40px 0 0;
-  z-index: 4;
+  z-index: 40;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 8px;
-  border: 2px dashed #2563eb;
-  border-radius: 8px;
-  background: rgba(37, 99, 235, 0.08);
-  color: #1d4ed8;
-  font-weight: 600;
+  margin: 10px;
+  padding: 18px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  text-align: center;
   pointer-events: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  .memo-default { --memo-bg: #18181b; --memo-bar: #27272a; }
-  .memo-yellow { --memo-bg: #2b2611; --memo-bar: #4a3f16; }
-  .memo-green { --memo-bg: #10261a; --memo-bar: #1a4029; }
-  .memo-blue { --memo-bg: #0f1d33; --memo-bar: #1b3257; }
-  .memo-pink { --memo-bg: #2c1322; --memo-bar: #4a1f39; }
-  .memo-purple { --memo-bg: #1f1a33; --memo-bar: #352a57; }
-  .memo-gray { --memo-bg: #202024; --memo-bar: #34343a; }
-
-  .memo {
-    --memo-line: rgba(255, 255, 255, 0.1);
-    --memo-hover: rgba(255, 255, 255, 0.08);
-  }
-
-  .memo-palette {
-    background: #18181b;
-    border-color: #3f3f46;
-  }
-
-  .memo-swatch {
-    border-color: rgba(255, 255, 255, 0.2);
-  }
-
-  .memo-error {
-    color: #fca5a5;
-  }
-
-  .memo-drop {
-    color: #93c5fd;
-  }
 }

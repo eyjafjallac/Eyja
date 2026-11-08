@@ -1,0 +1,1504 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Eyja — Phase 1: Split Live-Preview Editor & Glass Bubble Controls</title>
+  <link rel="stylesheet" href="./design-system.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <style>
+    .app-frame {
+      display: grid;
+      grid-template-columns: 244px 1fr 268px;
+      height: 100vh;
+      overflow: hidden;
+      background: var(--bg-app);
+      transition: grid-template-columns 0.18s ease;
+    }
+
+    .app-frame.hide-history {
+      grid-template-columns: 244px 1fr 0px;
+    }
+
+    .app-frame.hide-sidebar {
+      grid-template-columns: 0px 1fr 268px;
+    }
+
+    .app-frame.hide-sidebar.hide-history {
+      grid-template-columns: 0px 1fr 0px;
+    }
+
+    /* Left Sidebar (Recent ~10 visible + folders + tags) */
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border-subtle);
+      user-select: none;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .brand-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 12px 10px;
+    }
+
+    .brand-id {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      font-weight: 650;
+      font-size: 14.5px;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+      text-decoration: none;
+      padding: 4px 7px 4px 4px;
+      border-radius: 8px;
+      transition: background 0.12s ease;
+    }
+
+    .brand-id:hover {
+      background: var(--bg-hover);
+    }
+
+    .brand-mark {
+      width: 24px;
+      height: 24px;
+      border-radius: 7px;
+      background: linear-gradient(135deg, #2f5fe3, #1d3fae);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-serif);
+      font-size: 16px;
+      font-style: italic;
+      box-shadow: 0 2px 6px rgba(47, 95, 227, 0.3);
+    }
+
+    .quick-find {
+      margin: 0 12px 10px;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 12.5px;
+      cursor: pointer;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .nav-group {
+      padding: 2px 10px;
+    }
+
+    .nav-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 8px 4px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: var(--radius-sm);
+      color: var(--text-secondary);
+      font-size: 13px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 500;
+      box-shadow: var(--shadow-xs);
+    }
+
+    .nav-item-left {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-width: 0;
+    }
+
+    .nav-item-title {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .nav-time {
+      font-size: 11px;
+      color: var(--text-muted);
+      flex: none;
+    }
+
+    .recent-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0 8px 8px 10px;
+      margin-right: 2px;
+      max-height: 310px;
+    }
+
+    .sidebar-footer {
+      margin-top: auto;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
+    /* Center Workspace */
+    .workspace {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: var(--bg-surface);
+    }
+
+    /* Clean Symbol-Only Top Functional Bar */
+    .workspace-topbar {
+      height: 44px;
+      padding: 0 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: var(--bg-app);
+      z-index: 30;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Symbol Action Cluster on Top Right */
+    .symbol-toolbar {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .toolbar-sep {
+      width: 1px;
+      height: 16px;
+      background: var(--border-subtle);
+      margin: 0 2px;
+    }
+
+    /* Export Dropdown Popover anchored to Export symbol button */
+    .popover-anchor {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .export-popover {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      width: 196px;
+      padding: 8px;
+      border-radius: var(--radius-md);
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      box-shadow: var(--shadow-md);
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      z-index: 70;
+    }
+
+    .export-popover.open {
+      display: flex;
+    }
+
+    /* Split Editor Grid */
+    .split-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1.12fr 1fr;
+      min-height: 0;
+    }
+
+    .split-grid.single {
+      grid-template-columns: 1fr;
+    }
+
+    .split-grid.single #pane-right {
+      display: none;
+    }
+
+    .editor-pane {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+      background: var(--bg-surface);
+      position: relative;
+      --tab-font-size: 15px;
+      --tab-line-height: 1.72;
+      --tab-font-family: var(--font-sans);
+      transition: background 0.15s ease;
+    }
+
+    .editor-pane:not(.is-active-pane) .tab-strip {
+      opacity: 0.72;
+    }
+
+    .editor-pane.is-active-pane .tab.active {
+      border-bottom: 2px solid var(--accent);
+    }
+
+    .editor-pane + .editor-pane {
+      border-left: 1px solid var(--border-subtle);
+    }
+
+    /* Tab strip: up to 3 draggable tabs per group */
+    .tab-strip {
+      height: 36px;
+      padding: 0 8px;
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 27px;
+      padding: 0 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: grab;
+      border: 1px solid transparent;
+      user-select: none;
+    }
+
+    .tab:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .tab.active {
+      background: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 500;
+      border-color: var(--border-subtle);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .tab-close {
+      opacity: 0.45;
+      font-size: 11px;
+      padding: 0 2px;
+    }
+
+    .tab:hover .tab-close {
+      opacity: 0.9;
+    }
+
+    .tab-strip-right {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+    }
+
+    .tab-limit-badge {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      padding: 0 4px;
+    }
+
+    .pane-scroll {
+      flex: 1;
+      overflow-y: auto;
+      /* Extra bottom padding so the floating glass bubble never blocks the last lines */
+      padding: 28px 42px 86px;
+    }
+
+    .doc-meta-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+
+    .doc-title {
+      font-family: var(--font-serif);
+      font-size: calc(var(--tab-font-size) * 2.15);
+      font-weight: 400;
+      line-height: 1.15;
+      letter-spacing: -0.015em;
+      margin: 0 0 18px;
+      color: var(--text-primary);
+      transition: font-size 0.12s ease;
+    }
+
+    .prose {
+      font-family: var(--tab-font-family);
+      font-size: var(--tab-font-size);
+      line-height: var(--tab-line-height);
+      color: var(--text-primary);
+      max-width: 66ch;
+      transition: font-size 0.12s ease, line-height 0.12s ease;
+    }
+
+    .prose p {
+      margin: 0 0 14px;
+    }
+
+    .enlarged-span {
+      font-size: 1.32em;
+      font-weight: 600;
+      color: var(--selected-word-color, inherit);
+      background: linear-gradient(transparent 62%, var(--selected-word-bg, rgba(250, 204, 21, 0.32)) 62%);
+      padding: 0 3px;
+      border-radius: 3px;
+      transition: font-size 0.14s ease, color 0.14s ease, background 0.14s ease;
+    }
+
+    .wiki-link {
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 1px 6px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: 500;
+      cursor: pointer;
+    }
+
+    .math-card {
+      margin: 16px 0;
+      padding: 24px 20px 18px;
+      border-radius: var(--radius-md);
+      background: var(--bg-app);
+      border: 1px solid var(--border-subtle);
+      text-align: center;
+      font-family: var(--font-serif);
+      font-size: calc(var(--tab-font-size) * 1.15);
+      position: relative;
+      overflow-x: auto;
+    }
+
+    .math-card .badge {
+      position: absolute;
+      top: 6px;
+      right: 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-muted);
+      opacity: 0.75;
+      pointer-events: none;
+    }
+
+    /* Active CM6 cursor line revealing raw syntax + autocomplete popover */
+    .active-cm-line {
+      position: relative;
+      margin: 14px -10px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--accent-soft);
+      border-left: 2px solid var(--accent);
+      font-family: var(--font-mono);
+      font-size: calc(var(--tab-font-size) * 0.9);
+    }
+
+    .slash-popover {
+      margin-top: 8px;
+      width: 290px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-strong);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-md);
+      padding: 6px;
+      font-family: var(--font-sans);
+    }
+
+    .slash-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 6px;
+      font-size: 12.5px;
+    }
+
+    .slash-item.selected {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .slash-item.selected .kbd {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      border-color: transparent;
+    }
+
+    .code-block {
+      margin: 16px 0;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-app);
+      overflow: hidden;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+    }
+
+    .code-body {
+      padding: 12px 14px;
+      font-family: var(--font-mono);
+      font-size: calc(var(--tab-font-size) * 0.84);
+      line-height: 1.55;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    .md-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0;
+      font-size: calc(var(--tab-font-size) * 0.92);
+    }
+
+    .md-table th,
+    .md-table td {
+      border: 1px solid var(--border-subtle);
+      padding: 7px 10px;
+      text-align: left;
+    }
+
+    .md-table th {
+      background: var(--bg-app);
+      font-weight: 600;
+    }
+
+    /* Right Panel: Version History & Diff Timeline */
+    .history-drawer {
+      background: var(--bg-sidebar);
+      border-left: 1px solid var(--border-subtle);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .drawer-header {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border-subtle);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .drawer-title {
+      font-size: 12.5px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .timeline-rules {
+      margin: 10px 12px 4px;
+      padding: 8px 10px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      font-size: 11.5px;
+      color: var(--text-secondary);
+    }
+
+    .timeline-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .version-card {
+      padding: 9px 11px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      cursor: pointer;
+      transition: all 0.12s ease;
+    }
+
+    .version-card:hover {
+      border-color: var(--border-strong);
+    }
+
+    .version-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-soft);
+    }
+
+    .version-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .version-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--bg-subtle);
+      color: var(--text-secondary);
+    }
+
+    .version-badge.checkpoint {
+      background: var(--accent-soft);
+      color: var(--accent-text);
+    }
+
+    .diff-preview {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      margin-top: 6px;
+      padding: 5px 7px;
+      border-radius: 5px;
+      background: var(--bg-app);
+      color: var(--text-secondary);
+    }
+
+    .diff-add { color: var(--status-saved); }
+    .diff-del { color: var(--status-danger); text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <div id="app-frame" class="app-frame">
+    <!-- Left Sidebar -->
+    <aside class="sidebar">
+      <div class="brand-bar">
+        <a class="brand-id" href="./phase1-library.html" data-tip="Home & Library (48 docs)">
+          <div class="brand-mark">E</div>
+          <span>Eyja</span>
+        </a>
+        <div style="display:flex; gap:3px;">
+          <button class="sym-btn" data-tip="New Note (Ctrl+N)" aria-label="New Note">
+            <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+          </button>
+          <button class="sym-btn" data-tip="New Floating Memo (Ctrl+Shift+M)" aria-label="New Floating Memo" onclick="window.location.href='./phase1-memo.html'">
+            <svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="2.5"/><path d="M11.5 4v4.5H16"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="quick-find">
+        <span>Search or jump to…</span>
+        <span class="kbd">Ctrl K</span>
+      </div>
+
+      <div class="nav-label">
+        <span>Recent Files (10 visible)</span>
+        <span>10 / 48</span>
+      </div>
+      <div class="recent-scroll">
+        <div class="nav-item active">
+          <span class="nav-item-left"><span style="color:var(--accent)">●</span> <span class="nav-item-title">Spectral Graph Laplacian</span></span>
+          <span class="nav-time">Now</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Random Walks on Manifolds</span></span>
+          <span class="nav-time">4m</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📌</span> <span class="nav-item-title">Cheeger Inequality Proof</span></span>
+          <span class="nav-time">22m</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>🟨</span> <span class="nav-item-title">Memo: Eigenvalue bounds</span></span>
+          <span class="nav-time">1h</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Tauri SQLite Migration Log</span></span>
+          <span class="nav-time">3h</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Heat Kernel Asymptotics</span></span>
+          <span class="nav-time">Yesterday</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Riemannian Volume Form</span></span>
+          <span class="nav-time">Yesterday</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>🟦</span> <span class="nav-item-title">Memo: ArXiv figures drop</span></span>
+          <span class="nav-time">Oct 19</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Sobolev Embedding Notes</span></span>
+          <span class="nav-time">Oct 18</span>
+        </div>
+        <div class="nav-item">
+          <span class="nav-item-left"><span>📄</span> <span class="nav-item-title">Discrete Exterior Calculus</span></span>
+          <span class="nav-time">Oct 16</span>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <a class="btn" href="./index.html" style="flex:1; text-decoration:none;">← All Blueprints</a>
+        <button class="sym-btn" data-tip-pos="top" data-tip="Settings (Ctrl+,)" aria-label="Settings" onclick="openSettings()">
+          <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="2.6"/><path d="M10 3.2v1.6M10 15.2v1.6M3.2 10h1.6M15.2 10h1.6M5.2 5.2l1.1 1.1M13.7 13.7l1.1 1.1M14.8 5.2l-1.1 1.1M6.3 13.7l-1.1 1.1"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Center Workspace: Split Editor -->
+    <main class="workspace">
+      <!-- Top Bar: Breadcrumb + Save Status on Left, Pure Symbol Buttons with Hover Tooltips on Right -->
+      <header class="workspace-topbar">
+        <div class="topbar-left">
+          <button class="sym-btn" data-tip="Toggle Sidebar (Ctrl+\)" aria-label="Toggle Sidebar" onclick="document.getElementById('app-frame').classList.toggle('hide-sidebar')">
+            <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M7.5 4v12"/></svg>
+          </button>
+
+          <div class="breadcrumb">
+            <span>Differential Geometry</span>
+            <span>/</span>
+            <strong style="color:var(--text-primary)">Spectral Graph Laplacian</strong>
+          </div>
+
+          <span class="status-pill saved" data-tip="Auto-saved 500ms · Snapshot #14 in timeline">
+            <span class="dot"></span>
+            Saved · in history
+          </span>
+        </div>
+
+        <!-- Symbol-only functional toolbar (hover any icon to see its description) -->
+        <div class="symbol-toolbar" role="toolbar" aria-label="Document actions">
+          <button class="sym-btn" data-tip="Insert [[Document]] Reference" aria-label="Insert Document Reference">
+            <svg viewBox="0 0 20 20">
+              <path d="M7 4.5H4.5v11H7M13 4.5h2.5v11H13M8.5 10h3"/>
+            </svg>
+          </button>
+
+          <button class="sym-btn" data-tip="Slash Snippet Dictionary (/table, /math, /matrix, /code)" aria-label="Snippet Dictionary">
+            <svg viewBox="0 0 20 20">
+              <rect x="3.5" y="3.5" width="13" height="13" rx="2.5"/>
+              <path d="M11.5 6.5 8.5 13.5"/>
+            </svg>
+          </button>
+
+          <button class="sym-btn active" data-tip="Pinned to Top of Library" aria-label="Pin Note" onclick="this.classList.toggle('active')">
+            <svg viewBox="0 0 20 20">
+              <path d="M7.5 3.5h5M8.5 3.5v4.5l-3 3.5h9l-3-3.5V3.5M10 11.5v5"/>
+            </svg>
+          </button>
+
+          <div class="toolbar-sep"></div>
+
+          <button id="split-toggle-btn" class="sym-btn active" data-tip="Toggle Split Editor (Left & Right Tab Groups)" aria-label="Split Editor" onclick="toggleSplit(this)">
+            <svg viewBox="0 0 20 20">
+              <rect x="3" y="4" width="14" height="12" rx="2"/>
+              <path d="M10 4v12"/>
+            </svg>
+          </button>
+
+          <div class="popover-anchor">
+            <button id="export-btn" class="sym-btn" data-tip="Export Note (Markdown / A4 PDF)" aria-label="Export Note" onclick="toggleExportMenu(event)">
+              <svg viewBox="0 0 20 20">
+                <path d="M4.5 10.5V16h11v-5.5M10 12.5V3.5M7 6.5 10 3.5l3 3"/>
+              </svg>
+            </button>
+            <div id="export-popover" class="export-popover">
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--text-secondary); padding:2px 4px;">
+                <span>PDF Paper</span>
+                <select style="border:1px solid var(--border-subtle); border-radius:6px; padding:2px 6px; background:var(--bg-surface);">
+                  <option>A4 (Default)</option>
+                  <option>Letter</option>
+                  <option>A5</option>
+                </select>
+              </div>
+              <button class="btn" style="justify-content:space-between; width:100%;">
+                <span>Export Markdown (.md)</span>
+                <span class="kbd">[[→Title]]</span>
+              </button>
+              <button class="btn btn-primary" style="justify-content:space-between; width:100%;">
+                <span>Export Rendered PDF</span>
+                <span class="kbd">A4</span>
+              </button>
+            </div>
+          </div>
+
+          <button id="history-toggle-btn" class="sym-btn active" data-tip="Version Timeline & Restore (Ctrl+S)" aria-label="Version Timeline" onclick="toggleHistory(this)">
+            <svg viewBox="0 0 20 20">
+              <circle cx="10" cy="10" r="6.5"/>
+              <path d="M10 6.6V10l2.4 1.5"/>
+            </svg>
+          </button>
+
+          <div class="toolbar-sep"></div>
+
+          <button class="sym-btn" data-tip="Switch Dark / Light Theme" aria-label="Switch Theme" onclick="toggleTheme()">
+            <svg viewBox="0 0 20 20">
+              <path d="M14.5 12.8A6 6 0 0 1 7.2 5.5a6 6 0 1 0 7.3 7.3z"/>
+            </svg>
+          </button>
+
+          <button class="sym-btn danger" data-tip="Move Note to Trash" data-tip-align="right" aria-label="Delete Note">
+            <svg viewBox="0 0 20 20">
+              <path d="M4.5 6h11M8 6V4h4v2M6 6l.7 10h6.6L14 6"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <div id="split-grid" class="split-grid">
+        <!-- ================= LEFT TAB GROUP (Max 3 tabs · Active by default) ================= -->
+        <section id="pane-left" class="editor-pane is-active-pane" onclick="setActivePane('pane-left')">
+          <div class="tab-strip">
+            <div class="tabs">
+              <div class="tab active" onclick="activateTab(this)">
+                <span style="color:var(--accent)">●</span>
+                <span>Spectral Graph Laplacian</span>
+                <span class="tab-close">✕</span>
+              </div>
+              <div class="tab" onclick="activateTab(this)">
+                <span>Cheeger Inequality Proof</span>
+                <span class="tab-close">✕</span>
+              </div>
+              <div class="tab" onclick="activateTab(this)">
+                <span>Memo: Eigenvalue</span>
+                <span class="tab-close">✕</span>
+              </div>
+            </div>
+            <div class="tab-strip-right">
+              <span class="tab-limit-badge">3/3</span>
+              <button class="sym-btn" style="width:24px; height:24px;" data-tip="Move Active Tab to Right Split" aria-label="Move Tab Right">
+                <svg viewBox="0 0 20 20"><path d="M4.5 10h11M11.5 6l4 4-4 4"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="pane-scroll">
+            <div class="doc-meta-row">
+              <span class="tag-pill accent">#spectral-theory</span>
+              <span class="tag-pill">#laplacian</span>
+              <span class="tag-pill">#phase-1</span>
+              <span class="tag-pill" style="opacity:0.75">+ Tag (3/5)</span>
+            </div>
+
+            <h1 class="doc-title">Spectral Graph Laplacian &amp; Heat Diffusion</h1>
+
+            <div class="prose">
+              <p>
+                Given a weighted undirected graph \(G = (V, E, w)\), the <span id="demo-selection-left" class="enlarged-span">normalized graph Laplacian</span> links discrete combinatorics with continuous manifold geometry in <a class="wiki-link">[[Random Walks on Manifolds]]</a>.
+              </p>
+
+              <!-- Rendered KaTeX Block (cursor outside) -->
+              <div class="math-card">
+                <span class="badge">KaTeX Live Render</span>
+                \(\mathcal{L}_{\text{sym}} = I - D^{-1/2} A D^{-1/2} = \sum_{k=0}^{n-1} \lambda_k u_k u_k^\top\)
+              </div>
+
+              <!-- Active line showing "/" slash dictionary or "\matrix" completion -->
+              <div class="active-cm-line">
+                <div>$$ \mathcal{L} = \begin{pmatrix} d_1 &amp; -w_{12} \\ -w_{21} &amp; \mathbf{\backslash matr|} \end{pmatrix} $$</div>
+                <div class="slash-popover">
+                  <div style="font-size:10.5px; color:var(--text-muted); padding:2px 6px 4px; display:flex; justify-content:space-between;">
+                    <span>LaTeX Math &amp; `/` Snippet Dictionary</span>
+                    <span>Tab jumps slots</span>
+                  </div>
+                  <div class="slash-item selected">
+                    <span><strong>\pmatrix</strong> — Parenthesized matrix</span>
+                    <span class="kbd">Tab ↹</span>
+                  </div>
+                  <div class="slash-item">
+                    <span><strong>/table</strong> — Markdown 3×2 table</span>
+                    <span class="kbd">/</span>
+                  </div>
+                  <div class="slash-item">
+                    <span><strong>/code</strong> — Fenced code block</span>
+                    <span class="kbd">/</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Code Block with one-click raw copy -->
+              <div class="code-block">
+                <div class="code-header">
+                  <span>rust · src-tauri/src/versions.rs</span>
+                  <button class="sym-btn" style="width:24px; height:24px;" data-tip="Copy raw code block" aria-label="Copy code">
+                    <svg viewBox="0 0 20 20"><rect x="7" y="7" width="9" height="9" rx="1.8"/><path d="M4.5 13V5.5A1.5 1.5 0 0 1 6 4h7.5"/></svg>
+                  </button>
+                </div>
+                <pre class="code-body"><code>pub fn record_version(idx: usize, prev: &amp;str, next: &amp;str) -&gt; Entry {
+    if idx % 20 == 0 {
+        Entry::Checkpoint(next.to_owned()) // Snapshot every 20
+    } else {
+        Entry::Patch(create_diff(prev, next))
+    }
+}</code></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- FLOATING FROSTED GLASS BUBBLE (Only shown when Left Tab is the last active pane) -->
+          <div class="glass-bubble-wrap">
+            <div class="glass-bubble" role="toolbar" aria-label="Active tab typography & text color controls">
+              <button class="glass-btn" data-tip-pos="top" data-tip="Smaller text (A−)" onclick="stepFontSize('pane-left', -1)">
+                A−
+              </button>
+              <span class="glass-readout" data-tip-pos="top" data-tip="Text size · Click to reset (15px)" onclick="resetFontSize('pane-left')">
+                15px
+              </span>
+              <button class="glass-btn" data-tip-pos="top" data-tip="Larger text (A+)" onclick="stepFontSize('pane-left', 1)">
+                A+
+              </button>
+
+              <div class="glass-divider"></div>
+
+              <button class="glass-btn active" data-tip-pos="top" data-tip="Enlarge selected words (+1 step)" onclick="toggleEnlargeDemo('demo-selection-left', this)">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3.5 15.5 8 4.5l4.5 11M5.2 12h5.6M15.5 13.5V5.5M13 8l2.5-2.5L18 8"/>
+                </svg>
+              </button>
+
+              <div class="glass-divider"></div>
+
+              <!-- Selected Text Color Swatches -->
+              <div class="color-swatches-inline" role="group" aria-label="Selected text color">
+                <button type="button" class="text-color-dot" style="background:var(--text-primary);" data-tip-pos="top" data-tip="Default text color" onclick="applySelectedTextColor('demo-selection-left', 'inherit', 'rgba(250, 204, 21, 0.32)', this)"></button>
+                <button type="button" class="text-color-dot active" style="background:#f59e0b;" data-tip-pos="top" data-tip="Amber highlight / text" onclick="applySelectedTextColor('demo-selection-left', '#f59e0b', 'rgba(245, 158, 11, 0.22)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#ef4444;" data-tip-pos="top" data-tip="Coral red text" onclick="applySelectedTextColor('demo-selection-left', '#ef4444', 'rgba(239, 68, 68, 0.2)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#10b981;" data-tip-pos="top" data-tip="Emerald green text" onclick="applySelectedTextColor('demo-selection-left', '#10b981', 'rgba(16, 185, 129, 0.2)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#3b82f6;" data-tip-pos="top" data-tip="Ocean blue text" onclick="applySelectedTextColor('demo-selection-left', '#3b82f6', 'rgba(59, 130, 246, 0.22)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#a855f7;" data-tip-pos="top" data-tip="Violet purple text" onclick="applySelectedTextColor('demo-selection-left', '#a855f7', 'rgba(168, 85, 247, 0.22)', this)"></button>
+                <input type="color" class="custom-color-input" value="#3b82f6" data-tip-pos="top" data-tip="Custom text color picker" oninput="applySelectedTextColor('demo-selection-left', this.value, 'transparent', this)" />
+              </div>
+
+              <div class="glass-divider"></div>
+
+              <button class="glass-btn" data-tip-pos="top" data-tip="Cycle typeface (Sans / Serif / Mono)" onclick="cycleFontFamily('pane-left', this)">
+                Sans
+              </button>
+
+              <button class="glass-btn" data-tip-pos="top" data-tip="Line spacing (1.4 / 1.7 / 1.9)" onclick="cycleLineHeight('pane-left', this)">
+                ↕ 1.7
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ================= RIGHT TAB GROUP (Max 3 tabs · Click anywhere here to make active) ================= -->
+        <section id="pane-right" class="editor-pane" onclick="setActivePane('pane-right')">
+          <div class="tab-strip">
+            <div class="tabs">
+              <div class="tab active" onclick="activateTab(this)">
+                <span>Random Walks on Manifolds</span>
+                <span class="tab-close">✕</span>
+              </div>
+              <div class="tab" onclick="activateTab(this)">
+                <span>Heat Kernel Asymptotics</span>
+                <span class="tab-close">✕</span>
+              </div>
+            </div>
+            <div class="tab-strip-right">
+              <span class="tab-limit-badge">2/3</span>
+              <button class="sym-btn" style="width:24px; height:24px;" data-tip="New Tab in Right Group" aria-label="New Tab in Right Group">
+                <svg viewBox="0 0 20 20"><path d="M10 4.5v11M4.5 10h11"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="pane-scroll">
+            <div class="doc-meta-row">
+              <span class="tag-pill">#manifolds</span>
+              <span class="tag-pill">#probability</span>
+            </div>
+
+            <h1 class="doc-title">Random Walks on Manifolds</h1>
+
+            <div class="prose">
+              <p>
+                Referenced from <a class="wiki-link">[[Spectral Graph Laplacian]]</a>. The <span id="demo-selection-right" class="enlarged-span">Markov transition operator</span> \(P = D^{-1}A\) governs the lazy random walk across vertices:
+              </p>
+
+              <table class="md-table">
+                <thead>
+                  <tr>
+                    <th>Operator</th>
+                    <th>Definition</th>
+                    <th>Spectrum Range</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Combinatorial \(L\)</td>
+                    <td>\(D - A\)</td>
+                    <td>\(0 = \lambda_0 \le \dots \le \lambda_{n-1}\)</td>
+                  </tr>
+                  <tr>
+                    <td>Symmetric \(\mathcal{L}_{\text{sym}}\)</td>
+                    <td>\(I - D^{-1/2}AD^{-1/2}\)</td>
+                    <td>\([0, 2]\)</td>
+                  </tr>
+                  <tr>
+                    <td>Random Walk \(\mathcal{L}_{\text{rw}}\)</td>
+                    <td>\(I - D^{-1}A\)</td>
+                    <td>\([0, 2]\)</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <p style="color:var(--text-secondary);">
+                <strong>Click anywhere in this Right Tab</strong> to make it the active tab — the floating glass bubble smoothly moves from the Left Tab to stay only on the <strong>last active tab</strong>.
+              </p>
+            </div>
+          </div>
+
+          <!-- FLOATING FROSTED GLASS BUBBLE (Only shown when Right Tab is the last active pane) -->
+          <div class="glass-bubble-wrap">
+            <div class="glass-bubble" role="toolbar" aria-label="Right tab typography & text color controls">
+              <button class="glass-btn" data-tip-pos="top" data-tip="Smaller text (A−)" onclick="stepFontSize('pane-right', -1)">
+                A−
+              </button>
+              <span class="glass-readout" data-tip-pos="top" data-tip="Text size · Click to reset (15px)" onclick="resetFontSize('pane-right')">
+                15px
+              </span>
+              <button class="glass-btn" data-tip-pos="top" data-tip="Larger text (A+)" onclick="stepFontSize('pane-right', 1)">
+                A+
+              </button>
+
+              <div class="glass-divider"></div>
+
+              <button class="glass-btn active" data-tip-pos="top" data-tip="Enlarge selected words (+1 step)" onclick="toggleEnlargeDemo('demo-selection-right', this)">
+                <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3.5 15.5 8 4.5l4.5 11M5.2 12h5.6M15.5 13.5V5.5M13 8l2.5-2.5L18 8"/>
+                </svg>
+              </button>
+
+              <div class="glass-divider"></div>
+
+              <!-- Selected Text Color Swatches -->
+              <div class="color-swatches-inline" role="group" aria-label="Selected text color">
+                <button type="button" class="text-color-dot" style="background:var(--text-primary);" data-tip-pos="top" data-tip="Default text color" onclick="applySelectedTextColor('demo-selection-right', 'inherit', 'rgba(250, 204, 21, 0.32)', this)"></button>
+                <button type="button" class="text-color-dot active" style="background:#f59e0b;" data-tip-pos="top" data-tip="Amber highlight / text" onclick="applySelectedTextColor('demo-selection-right', '#f59e0b', 'rgba(245, 158, 11, 0.22)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#ef4444;" data-tip-pos="top" data-tip="Coral red text" onclick="applySelectedTextColor('demo-selection-right', '#ef4444', 'rgba(239, 68, 68, 0.2)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#10b981;" data-tip-pos="top" data-tip="Emerald green text" onclick="applySelectedTextColor('demo-selection-right', '#10b981', 'rgba(16, 185, 129, 0.2)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#3b82f6;" data-tip-pos="top" data-tip="Ocean blue text" onclick="applySelectedTextColor('demo-selection-right', '#3b82f6', 'rgba(59, 130, 246, 0.22)', this)"></button>
+                <button type="button" class="text-color-dot" style="background:#a855f7;" data-tip-pos="top" data-tip="Violet purple text" onclick="applySelectedTextColor('demo-selection-right', '#a855f7', 'rgba(168, 85, 247, 0.22)', this)"></button>
+                <input type="color" class="custom-color-input" value="#3b82f6" data-tip-pos="top" data-tip="Custom text color picker" oninput="applySelectedTextColor('demo-selection-right', this.value, 'transparent', this)" />
+              </div>
+
+              <div class="glass-divider"></div>
+
+              <button class="glass-btn" data-tip-pos="top" data-tip="Cycle typeface (Sans / Serif / Mono)" onclick="cycleFontFamily('pane-right', this)">
+                Sans
+              </button>
+
+              <button class="glass-btn" data-tip-pos="top" data-tip="Line spacing (1.4 / 1.7 / 1.9)" onclick="cycleLineHeight('pane-right', this)">
+                ↕ 1.7
+              </button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- Right Drawer: Timeline & Auto-save History -->
+    <aside class="history-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.6V10l2.4 1.5"/></svg>
+          <span>Version Timeline</span>
+        </div>
+        <span class="kbd">Ctrl+S</span>
+      </div>
+
+      <div class="timeline-rules">
+        <strong>Auto-save &amp; Checkpoint Rules</strong><br />
+        • Draft writes after <strong>500ms</strong> pause<br />
+        • Version recorded after <strong>2m idle</strong> or <strong>5m typing</strong><br />
+        • Full snapshot every <strong>20 patches</strong>
+      </div>
+
+      <div class="timeline-list">
+        <div class="version-card active">
+          <div class="version-top">
+            <span>Today, 9:35 PM (Current)</span>
+            <span class="version-badge">Patch #14</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-muted);">Saved via Ctrl+S · +18 words</div>
+          <div class="diff-preview">
+            <div class="diff-add">+ \mathcal{L}_{\text{sym}} = I - D^{-1/2} A D^{-1/2}</div>
+            <div class="diff-del">- L = D - A</div>
+          </div>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button class="btn btn-primary" style="flex:1; height:25px;">Restore this version</button>
+          </div>
+        </div>
+
+        <div class="version-card">
+          <div class="version-top">
+            <span>Today, 9:30 PM</span>
+            <span class="version-badge">Patch #13</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-muted);">5m continuous typing snapshot</div>
+        </div>
+
+        <div class="version-card">
+          <div class="version-top">
+            <span>Today, 9:22 PM</span>
+            <span class="version-badge">Patch #12</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-muted);">2m idle snapshot · Added table</div>
+        </div>
+
+        <div class="version-card">
+          <div class="version-top">
+            <span>Yesterday, 11:15 PM</span>
+            <span class="version-badge checkpoint">Checkpoint #0</span>
+          </div>
+          <div style="font-size:11.5px; color:var(--text-muted);">Full body checkpoint stored</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- ================= INTERACTIVE SETTINGS MODAL (4 Categorized Tabs) ================= -->
+  <div id="settings-backdrop" class="settings-backdrop" onclick="closeSettings(event)">
+    <section class="settings-modal" role="dialog" aria-label="Eyja Settings" onclick="event.stopPropagation()">
+      <!-- Left Category Sidebar -->
+      <nav class="settings-nav" aria-label="Settings categories">
+        <div class="settings-nav-title">Settings</div>
+        <button class="settings-nav-btn active" onclick="switchSettingsTab('tab-text', 'Text & Appearance', this)">
+          <svg viewBox="0 0 20 20"><path d="M4 5h12M10 5v11M6.5 16h7"/></svg>
+          <span>Text &amp; Colors</span>
+        </button>
+        <button class="settings-nav-btn" onclick="switchSettingsTab('tab-windows', 'Window Sizes', this)">
+          <svg viewBox="0 0 20 20"><rect x="3" y="4" width="14" height="12" rx="2"/><path d="M3 8h14"/></svg>
+          <span>Windows</span>
+        </button>
+        <button class="settings-nav-btn" onclick="switchSettingsTab('tab-memo', 'Quick Memo', this)">
+          <svg viewBox="0 0 20 20"><rect x="4" y="4" width="12" height="12" rx="2.5"/><path d="M11.5 4v4.5H16"/></svg>
+          <span>Quick Memo</span>
+        </button>
+        <button class="settings-nav-btn" onclick="switchSettingsTab('tab-timeline', 'Timeline & Library', this)">
+          <svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6.5"/><path d="M10 6.6V10l2.4 1.5"/></svg>
+          <span>Timeline &amp; Tags</span>
+        </button>
+      </nav>
+
+      <!-- Right Content Area -->
+      <div class="settings-content">
+        <header class="settings-content-head">
+          <strong id="settings-pane-title" style="font-size:15px;">Text &amp; Appearance</strong>
+          <button class="sym-btn" data-tip="Close (Esc)" aria-label="Close Settings" onclick="closeSettings()">
+            <svg viewBox="0 0 20 20"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+          </button>
+        </header>
+
+        <div class="settings-content-body">
+          <!-- 1. TEXT & APPEARANCE -->
+          <div id="tab-text" class="settings-pane active">
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Default Editor Font</span>
+                  <span class="setting-desc">Base typeface for notes and memos (can also be toggled in the bottom glass bubble)</span>
+                </div>
+                <div class="seg-control" role="radiogroup">
+                  <button class="seg-btn active" onclick="pickSeg(this)">Sans</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Serif</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Mono</button>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Default Line Spacing</span>
+                  <span class="setting-desc">Vertical rhythm across paragraphs and lists</span>
+                </div>
+                <div class="seg-control" role="radiogroup">
+                  <button class="seg-btn" onclick="pickSeg(this)">Tight (1.4)</button>
+                  <button class="seg-btn active" onclick="pickSeg(this)">Normal (1.6)</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Relaxed (1.8)</button>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Base Text Size</span>
+                  <span class="setting-desc">Default size in pixels before per-tab zoom</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <button class="btn icon-only" onclick="stepSettingSize(-1)">A−</button>
+                  <span id="setting-font-readout" class="kbd" style="min-width:44px; justify-content:center;">15px</span>
+                  <button class="btn icon-only" onclick="stepSettingSize(1)">A+</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Markdown Semantic Colors</span>
+                  <span class="setting-desc">Highlight covers <code>==marked==</code> text; Link covers <code>[[notes]]</code> and URLs</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                    <span>Highlight</span>
+                    <input type="color" value="#fde68a" class="custom-color-input" />
+                  </label>
+                  <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                    <span>Link</span>
+                    <input type="color" value="#2f5fe3" class="custom-color-input" />
+                  </label>
+                  <label style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
+                    <span>Quote</span>
+                    <input type="color" value="#cfcbc0" class="custom-color-input" />
+                  </label>
+                  <button class="btn" style="height:24px; font-size:11.5px;">Reset</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. WINDOWS -->
+          <div id="tab-windows" class="settings-pane">
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Main Editor &amp; Library Window</span>
+                  <span class="setting-desc">Default launch dimensions for the primary workspace</span>
+                </div>
+                <div class="seg-control">
+                  <button class="seg-btn" onclick="pickSeg(this)">Small</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Medium</button>
+                  <button class="seg-btn active" onclick="pickSeg(this)">Large</button>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">New Memo Window Size</span>
+                  <span class="setting-desc">Applies to newly spawned memos. Resized memos keep their own size</span>
+                </div>
+                <div class="seg-control">
+                  <button class="seg-btn" onclick="pickSeg(this)">Small</button>
+                  <button class="seg-btn active" onclick="pickSeg(this)">Medium</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Large</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. QUICK MEMO -->
+          <div id="tab-memo" class="settings-pane">
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Global Shortcut (`memo.md`)</span>
+                  <span class="setting-desc">Summons a floating memo window even when Eyja is in the background</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <button id="shortcut-btn" class="shortcut-recorder" onclick="toggleRecordShortcut(this)">
+                    Ctrl + Shift + M
+                  </button>
+                  <button class="btn" style="height:26px;" onclick="resetShortcut()">Reset</button>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Auto-Delete Old Memos</span>
+                  <span class="setting-desc">Off by default. When enabled, removes copied files from disk while keeping text in history</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" aria-label="Auto-delete old memos" />
+                  <span style="font-size:12px; color:var(--text-secondary);">After</span>
+                  <input type="number" class="num-input" value="30" min="1" />
+                  <span style="font-size:12px; color:var(--text-secondary);">days</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. TIMELINE & LIBRARY -->
+          <div id="tab-timeline" class="settings-pane">
+            <div class="setting-group">
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Idle Version Snapshot (`history.md`)</span>
+                  <span class="setting-desc">Records a timeline patch when you pause typing</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="number" class="num-input" value="2" min="1" />
+                  <span style="font-size:12px; color:var(--text-secondary);">minutes</span>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Continuous Typing Snapshot</span>
+                  <span class="setting-desc">Guarantees a version checkpoint during uninterrupted writing</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="number" class="num-input" value="5" min="1" />
+                  <span style="font-size:12px; color:var(--text-secondary);">minutes</span>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Version Retention Policy</span>
+                  <span class="setting-desc">Keep every diff forever, or compact older days to only the final version of each day</span>
+                </div>
+                <div class="seg-control">
+                  <button class="seg-btn active" onclick="pickSeg(this)">Keep All</button>
+                  <button class="seg-btn" onclick="pickSeg(this)">Last per Day</button>
+                </div>
+              </div>
+
+              <div class="setting-item">
+                <div class="setting-info">
+                  <span class="setting-title">Maximum Tags per Document (`library.md`)</span>
+                  <span class="setting-desc">Flat cross-folder tags allowed on each note or memo</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <input type="number" class="num-input" value="5" min="1" max="20" />
+                  <span style="font-size:12px; color:var(--text-secondary);">tags</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body);"></script>
+  <script>
+    function toggleTheme() {
+      const root = document.documentElement;
+      root.setAttribute("data-theme", root.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    }
+
+    function toggleSplit(btn) {
+      btn.classList.toggle("active");
+      document.getElementById("split-grid").classList.toggle("single");
+    }
+
+    function toggleHistory(btn) {
+      btn.classList.toggle("active");
+      document.getElementById("app-frame").classList.toggle("hide-history");
+    }
+
+    function toggleExportMenu(e) {
+      e.stopPropagation();
+      const pop = document.getElementById("export-popover");
+      const btn = document.getElementById("export-btn");
+      pop.classList.toggle("open");
+      btn.classList.toggle("active");
+    }
+
+    window.addEventListener("click", () => {
+      const pop = document.getElementById("export-popover");
+      const btn = document.getElementById("export-btn");
+      if (pop && pop.classList.contains("open")) {
+        pop.classList.remove("open");
+        btn.classList.remove("active");
+      }
+    });
+
+    /* Only the last active editor pane displays the floating glass bubble */
+    function setActivePane(paneId) {
+      document.querySelectorAll(".editor-pane").forEach((el) => {
+        el.classList.toggle("is-active-pane", el.id === paneId);
+      });
+    }
+
+    function activateTab(tabEl) {
+      const strip = tabEl.closest(".tabs");
+      strip.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+      tabEl.classList.add("active");
+    }
+
+    /* Apply selected text color from the glass bubble */
+    function applySelectedTextColor(spanId, color, bg, btn) {
+      const target = document.getElementById(spanId);
+      if (target) {
+        target.style.setProperty("--selected-word-color", color);
+        target.style.setProperty("--selected-word-bg", bg);
+      }
+      const group = btn.closest(".color-swatches-inline");
+      if (group) {
+        group.querySelectorAll(".text-color-dot").forEach((d) => d.classList.remove("active"));
+        if (btn.classList.contains("text-color-dot")) btn.classList.add("active");
+      }
+    }
+
+    /* Per-Tab Floating Glass Bubble Controls */
+    function stepFontSize(paneId, delta) {
+      const pane = document.getElementById(paneId);
+      const current = parseInt(getComputedStyle(pane).getPropertyValue("--tab-font-size"), 10) || 15;
+      const next = Math.min(24, Math.max(12, current + delta));
+      pane.style.setProperty("--tab-font-size", next + "px");
+      pane.querySelector(".glass-readout").textContent = next + "px";
+    }
+
+    function resetFontSize(paneId) {
+      const pane = document.getElementById(paneId);
+      pane.style.setProperty("--tab-font-size", "15px");
+      pane.querySelector(".glass-readout").textContent = "15px";
+    }
+
+    function toggleEnlargeDemo(spanId, btn) {
+      const el = document.getElementById(spanId);
+      btn.classList.toggle("active");
+      el.classList.toggle("enlarged-span");
+    }
+
+    const FONTS = [
+      { label: "Sans", css: "var(--font-sans)" },
+      { label: "Serif", css: "var(--font-serif)" },
+      { label: "Mono", css: "var(--font-mono)" },
+    ];
+
+    function cycleFontFamily(paneId, btn) {
+      const pane = document.getElementById(paneId);
+      const currentIdx = FONTS.findIndex((f) => f.label === btn.textContent.trim());
+      const next = FONTS[(currentIdx + 1) % FONTS.length];
+      pane.style.setProperty("--tab-font-family", next.css);
+      btn.textContent = next.label;
+    }
+
+    const LEADINGS = ["1.4", "1.7", "1.9"];
+
+    function cycleLineHeight(paneId, btn) {
+      const pane = document.getElementById(paneId);
+      const cur = btn.textContent.replace("↕", "").trim();
+      const idx = LEADINGS.indexOf(cur);
+      const next = LEADINGS[(idx + 1) % LEADINGS.length];
+      pane.style.setProperty("--tab-line-height", next);
+      btn.textContent = "↕ " + next;
+    }
+
+    /* Settings Modal Controls */
+    function openSettings() {
+      document.getElementById("settings-backdrop").classList.add("open");
+    }
+
+    function closeSettings(e) {
+      if (!e || e.target.id === "settings-backdrop") {
+        document.getElementById("settings-backdrop").classList.remove("open");
+      }
+    }
+
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        document.getElementById("settings-backdrop").classList.remove("open");
+      }
+    });
+
+    function switchSettingsTab(paneId, title, btn) {
+      document.querySelectorAll(".settings-pane").forEach((p) => p.classList.remove("active"));
+      document.querySelectorAll(".settings-nav-btn").forEach((b) => b.classList.remove("active"));
+      document.getElementById(paneId).classList.add("active");
+      document.getElementById("settings-pane-title").textContent = title;
+      btn.classList.add("active");
+    }
+
+    function pickSeg(btn) {
+      btn.closest(".seg-control").querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+    }
+
+    function stepSettingSize(delta) {
+      const el = document.getElementById("setting-font-readout");
+      const cur = parseInt(el.textContent, 10) || 15;
+      const next = Math.min(24, Math.max(12, cur + delta));
+      el.textContent = next + "px";
+    }
+
+    function toggleRecordShortcut(btn) {
+      btn.classList.toggle("recording");
+      btn.textContent = btn.classList.contains("recording") ? "Press keys…" : "Ctrl + Shift + M";
+    }
+
+    function resetShortcut() {
+      const btn = document.getElementById("shortcut-btn");
+      btn.classList.remove("recording");
+      btn.textContent = "Ctrl + Shift + M";
+    }
+  </script>
+</body>
+</html>
